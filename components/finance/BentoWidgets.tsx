@@ -60,7 +60,7 @@ export function BentoWidgets({
           </p>
         </div>
 
-        {/* Gauge bar in Pierre Neon Accent */}
+        {/* Gauge bar in Cofrinho Neon Accent */}
         <div className="mt-3">
           <div className="w-full bg-[#1c1c1f] rounded-full h-1.5 overflow-hidden">
             <div

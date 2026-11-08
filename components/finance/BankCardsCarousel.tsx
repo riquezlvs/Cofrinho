@@ -9,6 +9,7 @@ interface BankCardsCarouselProps {
   cards?: CreditCardSummary[];
   isPrivacyHidden: boolean;
   onConnectBank?: () => void;
+  onOpenInvoices?: () => void;
 }
 
 export function BankCardsCarousel({
@@ -17,6 +18,7 @@ export function BankCardsCarousel({
   cards,
   isPrivacyHidden,
   onConnectBank,
+  onOpenInvoices,
 }: BankCardsCarouselProps) {
   const [activeSlide, setActiveSlide] = useState(0);
 
@@ -56,9 +58,12 @@ export function BankCardsCarousel({
             </div>
 
             {/* Bottom Info: Total em faturas e valor */}
-            <div className="pt-3 pb-2 flex flex-col gap-0.5">
+            <div
+              onClick={onOpenInvoices}
+              className="pt-3 pb-2 flex flex-col gap-0.5 cursor-pointer group/inv"
+            >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-zinc-400 tracking-tight">
+                <span className="text-[11px] font-medium text-zinc-400 tracking-tight group-hover/inv:text-zinc-200 transition-colors">
                   Total em faturas
                 </span>
                 <span className="text-[10px] text-zinc-400 font-medium">

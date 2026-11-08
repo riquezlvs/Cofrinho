@@ -7,21 +7,17 @@ export type SegmentType = "contas" | "cartao" | "investimentos";
 export interface TopHeaderProps {
   userName?: string;
   showNameInHeader?: boolean;
-  isScrolled?: boolean;
   isPrivacyHidden: boolean;
   onTogglePrivacy: () => void;
   onOpenProfile?: () => void;
-  onOpenPro?: () => void;
 }
 
 export function TopHeader({
   userName = "João",
   showNameInHeader = false,
-  isScrolled = false,
   isPrivacyHidden,
   onTogglePrivacy,
   onOpenProfile,
-  onOpenPro,
 }: TopHeaderProps) {
   return (
     <header
@@ -29,15 +25,11 @@ export function TopHeader({
       data-purpose="fixed-top-header"
     >
       {/* 
-        Camada de Gradiente Sombreado:
-        - No topo (isScrolled = false): 100% invisível (opacity-0).
-        - Ao rolar para baixo (isScrolled = true): transição suave para um sombreado gradiente 
-          de cima para baixo bem transparente com desfoque fosco gradual e sem bordas duras.
+        Camada de Gradiente Sombreado Fixo:
+        Gradiente permanente de cima para baixo bem transparente com desfoque fosco gradual e sem bordas duras.
       */}
       <div
-        className={`absolute inset-0 pointer-events-none transition-opacity duration-300 ease-out ${
-          isScrolled ? "opacity-100" : "opacity-0"
-        }`}
+        className="absolute inset-0 pointer-events-none"
         style={{
           background:
             "linear-gradient(to bottom, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.72) 48%, rgba(0, 0, 0, 0.32) 78%, rgba(0, 0, 0, 0) 100%)",
@@ -85,12 +77,12 @@ export function TopHeader({
             </span>
             <span className="text-[10px] text-zinc-400 font-medium leading-tight mt-0.5 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-lime-400" />
-              Pierre Pro
+              Cofrinho
             </span>
           </div>
         </div>
 
-        {/* Right Action Cluster: Ocultar números sensíveis + Pierre Pro */}
+        {/* Right Action: Ocultar números sensíveis */}
         <div className="flex items-center gap-2 shrink-0">
           {/* Privacy Eye Button with Liquid Glass */}
           <button
@@ -130,16 +122,6 @@ export function TopHeader({
                 <circle cx="12" cy="12" r="3" strokeWidth="1.9" />
               </svg>
             )}
-          </button>
-
-          {/* Pierre Pro Badge */}
-          <button
-            type="button"
-            onClick={onOpenPro}
-            className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-full bg-[#ccff00] text-black font-semibold text-xs tracking-tight shadow-[0_4px_20px_rgba(204,255,0,0.35)] hover:brightness-105 active:scale-95 transition-all cursor-pointer min-h-[40px]"
-          >
-            <span>Pierre Pro</span>
-            <span className="text-sm leading-none font-bold">✪</span>
           </button>
         </div>
       </div>

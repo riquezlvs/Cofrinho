@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { TopHeader, SegmentedFilterPills, SegmentType } from "@/components/finance/TopHeader";
 import { BankCardsCarousel } from "@/components/finance/BankCardsCarousel";
 import { AccountsOverviewCard } from "@/components/finance/AccountsOverviewCard";
 import { MonthlySpendingCard } from "@/components/finance/MonthlySpendingCard";
 import { BentoDashboardGrid } from "@/components/finance/BentoDashboardGrid";
-import { FloatingPierreDock } from "@/components/finance/FloatingPierreDock";
+import { FloatingCofrinhoDock } from "@/components/finance/FloatingCofrinhoDock";
 import { DashboardData } from "@/types/finance";
 
 interface DashboardClientProps {
@@ -14,9 +15,9 @@ interface DashboardClientProps {
 }
 
 export function DashboardClient({ initialData }: DashboardClientProps) {
+  const router = useRouter();
   const [isPrivacyHidden, setIsPrivacyHidden] = useState(false);
   const [selectedSegment, setSelectedSegment] = useState<SegmentType>("contas");
-  const [isScrolled, setIsScrolled] = useState(false);
   const [isGreetingScrolledOut, setIsGreetingScrolledOut] = useState(false);
 
   const greetingRef = useRef<HTMLDivElement>(null);
@@ -32,11 +33,19 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
     console.log("Conectar novos bancos ou instituições");
   };
 
-  const handleAskPierre = () => {
+  const handleAskCofrinho = () => {
     console.log("Acionar assistente IA Pierre");
   };
 
+  const handleNavigateExtrato = () => {
+    router.push("/extrato");
+  };
+
   const handleWidgetClick = (widgetName: string) => {
+    if (widgetName === "transacoes" || widgetName === "fatura" || widgetName === "extrato") {
+      router.push("/extrato");
+      return;
+    }
     console.log("Widget clicado:", widgetName);
   };
 
@@ -50,17 +59,14 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
       maximumFractionDigits: 2,
     });
 
-  // Detecta rolagem para ativar o gradiente sombreado e a animação do nome
+  // Detecta rolagem para a animação do nome no header
   useEffect(() => {
     const checkScrollPosition = () => {
       const windowScroll = window.scrollY || document.documentElement.scrollTop || 0;
       const containerScroll = scrollContainerRef.current?.scrollTop || 0;
       const effectiveScroll = Math.max(windowScroll, containerScroll);
 
-      // 1. O gradiente sombreado do header fica invisível no topo e surge suavemente ao rolar (> 8px)
-      setIsScrolled(effectiveScroll > 8);
-
-      // 2. O nome "João" só aparece ao lado da foto quando o título "Boa tarde, João" passar pelo header
+      // O nome "João" só aparece ao lado da foto quando o título "Boa tarde, João" passar pelo header
       if (greetingRef.current) {
         const rect = greetingRef.current.getBoundingClientRect();
         setIsGreetingScrolledOut(rect.bottom <= 64);
@@ -112,7 +118,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
   return (
     <main
       className="w-full max-w-full sm:max-w-[440px] md:max-w-[460px] min-h-screen bg-black text-white flex flex-col relative shadow-2xl sm:my-6 sm:rounded-[44px] sm:border sm:border-zinc-800/80 sm:overflow-clip"
-      data-purpose="pierre-finance-liquid-glass-view"
+      data-purpose="cofrinho-liquid-glass-view"
     >
       {/* Dynamic Glowing Mesh Aurora Gradient FIXO no viewport do container */}
       <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-full sm:max-w-[440px] md:max-w-[460px] h-screen pointer-events-none overflow-hidden z-0">
@@ -129,15 +135,13 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
         <div className="absolute bottom-10 left-[10%] w-[320px] h-[260px] bg-gradient-to-t from-purple-900/30 via-indigo-800/20 to-transparent rounded-full blur-[90px]" />
       </div>
 
-      {/* Header Fixo: Invisível no topo e com tom gradiente sombreado ao rolar */}
+      {/* Header Fixo: Com gradiente sombreado permanente e nome animado ao rolar */}
       <TopHeader
         userName={userName}
         showNameInHeader={isGreetingScrolledOut}
-        isScrolled={isScrolled}
         isPrivacyHidden={isPrivacyHidden}
         onTogglePrivacy={handleTogglePrivacy}
         onOpenProfile={() => console.log("Abrir perfil")}
-        onOpenPro={() => console.log("Abrir Pierre Pro")}
       />
 
       {/* Main Content Area com scroll nativo e espaçamento otimizado para celulares reais */}
@@ -165,6 +169,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           cards={initialData.creditCards}
           isPrivacyHidden={isPrivacyHidden}
           onConnectBank={handleConnectBank}
+          onOpenInvoices={handleNavigateExtrato}
         />
 
         {/* 2. Cartão de Saldo em Contas (Refletindo contas reais do Supabase: Nubank, VR, etc.) */}
@@ -172,7 +177,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           totalBalance={initialData.totalAccountsBalance}
           accounts={initialData.accounts}
           isPrivacyHidden={isPrivacyHidden}
-          onOpenDetails={() => console.log("Abrir detalhes de contas")}
+          onOpenDetails={handleNavigateExtrato}
         />
 
         {/* 3. Cartão Largura Total: Gastos do Mês com barra verde neon e marcador dinâmico */}
@@ -181,7 +186,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           limitPlanned={initialData.monthOverview.limitPlanned}
           percentageConsumed={initialData.monthOverview.percentageConsumed}
           isPrivacyHidden={isPrivacyHidden}
-          onOpenDetails={() => console.log("Abrir detalhes de gastos do mês")}
+          onOpenDetails={handleNavigateExtrato}
         />
 
         {/* 4. Grid Bento de Widgets (Categorias, Fluxo de Caixa, Limite Usado, Parcelamentos, Fatura, Assinaturas) */}
@@ -207,10 +212,11 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
       </div>
 
       {/* Floating Liquid Glass Dock (Search bar + Bottom capsule navigation + Mascot) com alturas aumentadas */}
-      <FloatingPierreDock
-        onAskPierre={handleAskPierre}
-        onNavigateHome={() => console.log("Ir para home")}
-        onTransfer={() => console.log("Abrir transferências")}
+      <FloatingCofrinhoDock
+        activeTab="home"
+        onAskCofrinho={handleAskCofrinho}
+        onNavigateHome={() => console.log("Já está na home")}
+        onTransfer={handleNavigateExtrato}
         onOpenMascot={() => console.log("Abrir mascote")}
       />
     </main>

@@ -47,7 +47,7 @@ export interface AccountSummary {
   color?: string;
   icon?: string;
   updatedAt: string;
-  logoType?: "santander" | "nubank" | "vr" | "pierre" | "other";
+  logoType?: "santander" | "nubank" | "vr" | "cofrinho" | "other";
 }
 
 export interface CashFlowSummary {
@@ -60,6 +60,76 @@ export interface InstallmentSummary {
   totalRemaining: number;
   activeCount: number;
   nextBillAmount: number;
+}
+
+export interface ExtratoTransaction {
+  id: string;
+  title: string;
+  description: string;
+  amount: number;
+  type: "income" | "expense";
+  categoryIcon?: string;
+  categoryName?: string;
+  categoryColor?: string;
+  paymentMethod?: string;
+  accountOrCard?: string;
+  transactionDate: string;
+  formattedDate?: string;
+  dateGroup?: string;
+  status?: "paid" | "pending";
+  isFixed?: boolean;
+}
+
+export interface ExtratoCategory {
+  id: string;
+  name: string;
+  type: string;
+  color?: string;
+  icon?: string;
+  parentId?: string | null;
+  subcategories?: ExtratoCategory[];
+}
+
+export interface ExtratoAccount {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface ExtratoCreditCard {
+  id: string;
+  name: string;
+}
+
+export interface Person {
+  id: string;
+  name: string;
+  pixKey?: string;
+  phone?: string;
+  avatarUrl?: string;
+}
+
+export interface SplitPayload {
+  personId: string;
+  personName: string;
+  amountOwed: number;
+  percentage: number;
+  direction?: "receivable" | "payable";
+}
+
+export interface FixedIncomeRule {
+  dayOfMonth: number;
+  adjustBusinessDay: boolean;
+  shiftDirection: "anticipate" | "postpone";
+}
+
+export interface ExtratoData {
+  userName: string;
+  transactions: ExtratoTransaction[];
+  categories?: ExtratoCategory[];
+  accounts?: ExtratoAccount[];
+  creditCards?: ExtratoCreditCard[];
+  people?: Person[];
 }
 
 export interface DashboardData {

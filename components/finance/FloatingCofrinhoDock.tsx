@@ -2,24 +2,28 @@
 
 import React, { useState } from "react";
 
-interface FloatingPierreDockProps {
-  onAskPierre?: () => void;
+export interface FloatingCofrinhoDockProps {
+  activeTab?: "home" | "extrato";
+  onAskCofrinho?: () => void;
   onNavigateHome?: () => void;
   onTransfer?: () => void;
   onOpenMascot?: () => void;
+  placeholder?: string;
 }
 
-export function FloatingPierreDock({
-  onAskPierre,
+export function FloatingCofrinhoDock({
+  activeTab = "home",
+  onAskCofrinho,
   onNavigateHome,
   onTransfer,
   onOpenMascot,
-}: FloatingPierreDockProps) {
+  placeholder = "Pergunte ao Pierre",
+}: FloatingCofrinhoDockProps) {
   const [prompt, setPrompt] = useState("");
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && prompt.trim()) {
-      onAskPierre?.();
+      onAskCofrinho?.();
       setPrompt("");
     }
   };
@@ -29,7 +33,7 @@ export function FloatingPierreDock({
       className="fixed bottom-0 left-0 right-0 w-full max-w-full sm:max-w-[440px] md:max-w-[460px] mx-auto px-4 pb-5 sm:pb-6 pt-2 z-40 pointer-events-none flex flex-col gap-2.5"
       data-purpose="floating-bottom-dock"
     >
-      {/* 1. Pierre Quick Query Pill (altura e toque aumentados) */}
+      {/* 1. Cofrinho / Pierre Quick Query Pill */}
       <div className="pointer-events-auto w-full liquid-glass rounded-2xl px-4 py-3 sm:py-3.5 min-h-[48px] flex items-center gap-3 shadow-2xl backdrop-blur-2xl border border-white/[0.14]">
         {/* Scanner / QR / Search Icon */}
         <div className="text-lime-400 shrink-0">
@@ -37,7 +41,7 @@ export function FloatingPierreDock({
             className="w-5 h-5 sm:w-5.5 sm:h-5.5"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="2.2"
             viewBox="0 0 24 24"
           >
             <path
@@ -54,7 +58,7 @@ export function FloatingPierreDock({
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Pergunte ao Pierre"
+          placeholder={placeholder}
           className="w-full bg-transparent text-sm sm:text-[15px] text-white placeholder-zinc-400 focus:outline-none"
         />
 
@@ -62,7 +66,7 @@ export function FloatingPierreDock({
           <button
             type="button"
             onClick={() => {
-              onAskPierre?.();
+              onAskCofrinho?.();
               setPrompt("");
             }}
             className="w-8 h-8 rounded-full bg-[#ccff00] text-black flex items-center justify-center shrink-0 active:scale-95 transition-transform cursor-pointer shadow-md"
@@ -81,16 +85,20 @@ export function FloatingPierreDock({
         )}
       </div>
 
-      {/* 2. Glass Capsule Navigation Bar + Mascot Winged Circle (altura aumentada para h-16) */}
+      {/* 2. Glass Capsule Navigation Bar + Mascot */}
       <div className="pointer-events-auto relative w-full flex items-center justify-between">
-        {/* Main Glass Nav Dock - Altura aumentada de h-14 para h-16 (64px) para uso real no celular */}
+        {/* Main Glass Nav Dock */}
         <nav className="flex-1 mr-3 h-16 rounded-full liquid-glass-dock px-6 flex items-center justify-between shadow-2xl border border-white/[0.18]">
           {/* Home Icon */}
           <button
             type="button"
             onClick={onNavigateHome}
             aria-label="Início"
-            className="p-2.5 text-lime-400 hover:text-lime-300 transition-colors active:scale-90 cursor-pointer rounded-full"
+            className={`p-2.5 transition-colors active:scale-90 cursor-pointer rounded-full ${
+              activeTab === "home"
+                ? "text-lime-400 hover:text-lime-300"
+                : "text-zinc-400 hover:text-white"
+            }`}
           >
             <svg
               className="w-6.5 h-6.5 stroke-[2.2]"
@@ -106,23 +114,29 @@ export function FloatingPierreDock({
             </svg>
           </button>
 
-          {/* Central Mini Avatar or Mascot */}
-          <div className="w-9 h-9 rounded-full overflow-hidden border border-white/20 bg-gradient-to-tr from-purple-800 to-indigo-600 flex items-center justify-center text-sm shadow-inner cursor-pointer hover:scale-105 active:scale-95 transition-transform select-none">
-            👾
+          {/* Central Mini Avatar or Pierre Team */}
+          <div className="w-9 h-9 rounded-full overflow-hidden border border-white/20 bg-gradient-to-tr from-purple-900 via-indigo-900 to-zinc-900 flex items-center justify-center shadow-inner cursor-pointer hover:scale-105 active:scale-95 transition-transform select-none">
+            <div className="flex -space-x-1.5 items-center">
+              <span className="text-[11px]">🐺</span>
+              <span className="text-[11px]">🐷</span>
+            </div>
           </div>
 
-          {/* Transfer Double Arrow Icon */}
+          {/* Transfer / Extrato Double Arrow Icon (Setinhas) */}
           <button
             type="button"
             onClick={onTransfer}
-            aria-label="Transferências"
-            className="p-2.5 text-zinc-300 hover:text-white transition-colors active:scale-90 cursor-pointer rounded-full"
+            aria-label="Extrato e atividades"
+            className={`transition-all active:scale-95 cursor-pointer flex items-center justify-center ${
+              activeTab === "extrato"
+                ? "bg-[#1f2026] text-lime-400 px-4 py-2 rounded-full border border-white/10 shadow-inner"
+                : "p-2.5 text-zinc-300 hover:text-white rounded-full"
+            }`}
           >
             <svg
-              className="w-6.5 h-6.5"
+              className="w-5.5 h-5.5 stroke-[2.4]"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2.2"
               viewBox="0 0 24 24"
             >
               <path
@@ -134,24 +148,37 @@ export function FloatingPierreDock({
           </button>
         </nav>
 
-        {/* Floating Mascot Button with Glowing Wings & Stack - Aumentado para w-16 h-16 (64px) alinhado ao dock */}
+        {/* Floating Mascot Button with Shades */}
         <button
           type="button"
           onClick={onOpenMascot}
           aria-label="Assistente Pierre"
-          className="relative w-16 h-16 rounded-full liquid-glass flex items-center justify-center group active:scale-95 transition-transform cursor-pointer shrink-0 shadow-[0_8px_25px_rgba(204,255,0,0.25)] border border-white/[0.18]"
+          className="relative w-16 h-16 rounded-full liquid-glass flex items-center justify-center group active:scale-95 transition-transform cursor-pointer shrink-0 shadow-[0_8px_25px_rgba(204,255,0,0.2)] border border-white/[0.18]"
         >
-          {/* Wings Effect behind mascot */}
-          <div className="absolute -inset-1 bg-gradient-to-r from-lime-400/30 to-purple-400/30 rounded-full blur-sm group-hover:blur-md transition-all pointer-events-none" />
+          {/* Subtle glow behind mascot */}
+          <div className="absolute -inset-1 bg-gradient-to-r from-lime-400/20 to-purple-400/20 rounded-full blur-sm group-hover:blur-md transition-all pointer-events-none" />
 
-          <div className="relative text-2xl select-none animate-pulse">
-            🐱
-          </div>
-
-          {/* Money Stack badge at bottom */}
-          <span className="absolute -bottom-1 -right-1 text-xs select-none">
-            💵
-          </span>
+          {/* Pierre Mascot Vector with Sunglasses */}
+          <svg
+            className="w-8 h-8 text-white relative z-10"
+            viewBox="0 0 32 32"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            {/* Ears and face outline */}
+            <path d="M7 13 L6 6 L12 9.5 C13.3 9.2 14.6 9 16 9 C17.4 9 18.7 9.2 20 9.5 L26 6 L25 13 C26.3 15 27 17.4 27 20 C27 25 22 28 16 28 C10 28 5 25 5 20 C5 17.4 5.7 15 7 13 Z" />
+            {/* Sunglasses left lens */}
+            <path d="M8 17 H14 V20 C14 21.1 13.1 22 12 22 H10 C8.9 22 8 21.1 8 20 V17 Z" fill="white" />
+            {/* Sunglasses right lens */}
+            <path d="M18 17 H24 V20 C24 21.1 23.1 22 22 22 H20 C18.9 22 18 21.1 18 20 V17 Z" fill="white" />
+            {/* Sunglasses bridge */}
+            <path d="M14 18.5 H18" strokeWidth="2" />
+            {/* Cat mouth :3 */}
+            <path d="M13.5 24.5 C14.5 25.4 15.3 25.4 16 24.8 C16.7 25.4 17.5 25.4 18.5 24.5" />
+          </svg>
         </button>
       </div>
     </div>

@@ -6,7 +6,7 @@ function DashboardSkeleton() {
   return (
     <main
       className="w-full max-w-full sm:max-w-[440px] md:max-w-[460px] min-h-screen bg-black text-white flex flex-col justify-between relative shadow-2xl sm:my-6 sm:rounded-[44px] sm:border sm:border-zinc-800/80 sm:overflow-clip"
-      data-purpose="pierre-finance-skeleton"
+      data-purpose="cofrinho-skeleton"
     >
       <div className="px-4 sm:px-5 py-3.5 flex items-center justify-between border-b border-white/[0.06]">
         <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-zinc-800 animate-pulse" />
