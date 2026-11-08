@@ -1,38 +1,29 @@
 "use client";
 
 import React from "react";
+import { AccountSummary } from "@/types/finance";
 
-interface AccountItem {
-  id: string;
-  name: string;
-  updatedAt: string;
-  amount: number;
-  percentage: number;
-  logoType?: "santander" | "pierre" | "other";
-}
+export type AccountItem = AccountSummary;
 
 interface AccountsOverviewCardProps {
   totalBalance: number;
   isPrivacyHidden: boolean;
-  accounts?: AccountItem[];
+  accounts?: AccountSummary[];
   onOpenDetails?: () => void;
 }
 
 export function AccountsOverviewCard({
   totalBalance,
   isPrivacyHidden,
-  accounts = [
-    {
-      id: "santander-1",
-      name: "Santander",
-      updatedAt: "Atualizado agora",
-      amount: 4.71,
-      percentage: 100,
-      logoType: "santander",
-    },
-  ],
+  accounts = [],
   onOpenDetails,
 }: AccountsOverviewCardProps) {
+  const formatCurrency = (val: number) =>
+    val.toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
   return (
     <div className="w-full rounded-[28px] liquid-glass-card p-5 border border-white/[0.12] flex flex-col gap-4 shadow-2xl">
       {/* Header do Card: Saldo em contas > */}
@@ -61,21 +52,30 @@ export function AccountsOverviewCard({
             isPrivacyHidden ? "balance-blur" : ""
           }`}
         >
-          R${" "}
-          {totalBalance.toLocaleString("pt-BR", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}
+          R$ {formatCurrency(totalBalance)}
         </span>
 
-        {/* Barra de Progresso / Proporção Roxa e Verde */}
-        <div className="w-full h-1.5 bg-white/[0.08] rounded-full overflow-hidden flex">
-          <div className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-full w-[95%]" />
-          <div className="h-full bg-emerald-400 rounded-full w-[5%]" />
+        {/* Barra de Progresso Proporcional Dinâmica */}
+        <div className="w-full h-1.5 bg-white/[0.08] rounded-full overflow-hidden flex gap-0.5">
+          {accounts.map((acc, i) => {
+            let bgClass = "bg-gradient-to-r from-purple-500 to-fuchsia-500";
+            if (acc.logoType === "vr") bgClass = "bg-amber-400";
+            else if (acc.logoType === "santander") bgClass = "bg-rose-500";
+            else if (i === 1) bgClass = "bg-emerald-400";
+
+            return (
+              <div
+                key={acc.id}
+                style={{ width: `${Math.max(4, acc.percentage)}%` }}
+                className={`h-full ${bgClass} rounded-full transition-all duration-500`}
+                title={`${acc.name}: ${acc.percentage}%`}
+              />
+            );
+          })}
         </div>
       </div>
 
-      {/* Lista de Bancos Vinculados */}
+      {/* Lista de Bancos e Contas Reais do Banco de Dados */}
       <div className="flex flex-col gap-2 pt-0.5">
         {accounts.map((acc, index) => (
           <div
@@ -85,19 +85,26 @@ export function AccountsOverviewCard({
             }`}
           >
             <div className="flex items-center gap-3">
-              {/* Santander Icon */}
+              {/* Logo do Banco / Benefício */}
               {acc.logoType === "santander" ? (
-                <div className="w-10 h-10 rounded-full bg-[#ec0000] flex items-center justify-center text-white shadow-md shadow-red-600/30">
-                  <svg
-                    className="w-5 h-5 fill-current"
-                    viewBox="0 0 24 24"
-                  >
+                <div className="w-10 h-10 rounded-full bg-[#ec0000] flex items-center justify-center text-white shadow-md shadow-red-600/30 shrink-0">
+                  <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3.8 14.8c-.8.8-2 .9-2.9.4-.9-.6-1.5-1.5-1.9-2.4l-.1-.2-.1.2c-.4.9-1 1.8-1.9 2.4-.9.5-2.1.4-2.9-.4-.7-.7-.8-1.8-.3-2.6.4-.7 1.2-1.2 2-1.4l.7-.2-.5-.5c-.8-.7-1-1.8-.5-2.7.5-.9 1.5-1.3 2.5-1.1.9.2 1.6.8 1.9 1.7l.2.6.2-.6c.3-.9 1-1.5 1.9-1.7 1-.2 2 .2 2.5 1.1.5.9.3 2-.5 2.7l-.5.5.7.2c.8.2 1.6.7 2 1.4.5.8.4 1.9-.3 2.6z"/>
                   </svg>
                 </div>
+              ) : acc.logoType === "nubank" ? (
+                <div className="w-10 h-10 rounded-full bg-[#820AD1] flex items-center justify-center text-white font-extrabold text-sm shadow-md shadow-purple-600/30 shrink-0">
+                  Nu
+                </div>
+              ) : acc.logoType === "vr" ? (
+                <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white shadow-md shadow-amber-500/30 shrink-0">
+                  <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                    <path d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z" />
+                  </svg>
+                </div>
               ) : (
-                <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-white text-xs font-bold">
-                  {acc.name[0]}
+                <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                  {acc.name ? acc.name[0] : "B"}
                 </div>
               )}
 
@@ -106,7 +113,7 @@ export function AccountsOverviewCard({
                   {acc.name}
                 </span>
                 <span className="text-[11px] font-normal text-zinc-400">
-                  {acc.updatedAt}
+                  {acc.isIsolated ? "VR Isolado • " : ""}{acc.updatedAt}
                 </span>
               </div>
             </div>
@@ -117,11 +124,7 @@ export function AccountsOverviewCard({
                   isPrivacyHidden ? "balance-blur" : ""
                 }`}
               >
-                R${" "}
-                {acc.amount.toLocaleString("pt-BR", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                R$ {formatCurrency(acc.amount)}
               </span>
               <span className="text-[11px] text-zinc-400 font-medium">
                 {acc.percentage}%
