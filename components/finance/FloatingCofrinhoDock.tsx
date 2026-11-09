@@ -9,6 +9,7 @@ export interface FloatingCofrinhoDockProps {
   onTransfer?: () => void;
   onOpenMascot?: () => void;
   placeholder?: string;
+  hidden?: boolean;
 }
 
 export function FloatingCofrinhoDock({
@@ -18,6 +19,7 @@ export function FloatingCofrinhoDock({
   onTransfer,
   onOpenMascot,
   placeholder = "Pergunte ao Pierre",
+  hidden = false,
 }: FloatingCofrinhoDockProps) {
   const [prompt, setPrompt] = useState("");
 
@@ -27,6 +29,8 @@ export function FloatingCofrinhoDock({
       setPrompt("");
     }
   };
+
+  if (hidden) return null;
 
   return (
     <div

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Eye,
@@ -82,6 +82,7 @@ export interface ExtratoClientProps {
   onNavigateToHome?: () => void;
   onAskCofrinho?: () => void;
   onOpenMascot?: () => void;
+  onOverlayChange?: (isOpen: boolean) => void;
 }
 
 type FilterType = "all" | "income" | "expense" | "payment";
@@ -628,10 +629,6 @@ export function AccountBadge({
   }
 }
 
-function renderAccountBadge(tx: ExtratoTransaction, customClasses?: string) {
-  return <AccountBadge tx={tx} customClasses={customClasses} />;
-}
-
 export function ExtratoClient({
   initialData,
   embedded = false,
@@ -640,6 +637,7 @@ export function ExtratoClient({
   onNavigateToHome,
   onAskCofrinho,
   onOpenMascot,
+  onOverlayChange,
 }: ExtratoClientProps) {
   const router = useRouter();
 
@@ -674,6 +672,20 @@ export function ExtratoClient({
   const [editTxDate, setEditTxDate] = useState("");
   const [editTxTime, setEditTxTime] = useState("");
   const [editTxPaymentMethod, setEditTxPaymentMethod] = useState<string>("credit");
+
+  // Estado unificado de overlays para ocultar o navbar flutuante e evitar sobreposição com botões
+  const isAnyOverlayOpen = Boolean(
+    isNewTxModalOpen ||
+    isEditTxModalOpen ||
+    selectedTx !== null ||
+    isCategoryPickerOpen ||
+    isFilterSheetOpen ||
+    isConfirmDeleteOpen
+  );
+
+  useEffect(() => {
+    onOverlayChange?.(isAnyOverlayOpen);
+  }, [isAnyOverlayOpen, onOverlayChange]);
 
   // Filtros avançados adaptados às imagens do anexo
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("currentMonth");
@@ -1847,7 +1859,7 @@ export function ExtratoClient({
 
       {/* TELA DE NOVA TRANSAÇÃO */}
       {isNewTxModalOpen && (
-        <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col h-[100dvh] sm:h-full max-h-[100dvh] text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden">
+        <div className="fixed inset-0 sm:absolute sm:inset-0 z-[70] bg-[#09090b] flex flex-col h-[100dvh] sm:h-full max-h-[100dvh] text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden">
           {/* Header fixo no topo */}
           <div className="shrink-0 px-5 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/[0.08] relative flex items-center justify-center bg-[#09090b] z-10">
             <h2 className="text-base sm:text-[17px] font-bold text-white tracking-tight">
@@ -2560,7 +2572,7 @@ export function ExtratoClient({
 
       {/* TELA DE SELEÇÃO DE CATEGORIAS (Fiel à imagem em anexo) */}
       {isCategoryPickerOpen && (
-        <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col p-5 sm:p-6 text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))]">
+        <div className="fixed inset-0 sm:absolute sm:inset-0 z-[80] bg-[#09090b] flex flex-col p-5 sm:p-6 text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))]">
           {/* Header com botão Fechar X circular na direita */}
           <div className="flex items-center justify-end pt-1 pb-3">
             <button
@@ -2722,7 +2734,7 @@ export function ExtratoClient({
 
       {/* Modal / Tela de Filtros - Adaptado fielmente às imagens de referência */}
       {isFilterSheetOpen && (
-        <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col justify-between text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden w-full h-full min-h-screen sm:min-h-0">
+        <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col justify-between text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden w-full h-[100dvh] sm:h-full max-h-[100dvh] sm:max-h-full">
           {/* Header com Título Filtros e botão circular X à direita */}
           <div className="flex items-center justify-between px-5 sm:px-6 pt-[max(1.25rem,env(safe-area-inset-top))] pb-2 shrink-0">
             <h2 className="text-2xl sm:text-[28px] font-bold tracking-tight text-white">
@@ -3079,7 +3091,7 @@ export function ExtratoClient({
         };
 
         return (
-          <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col overflow-y-auto px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(4rem,env(safe-area-inset-bottom))] text-white animate-in slide-in-from-right duration-200 select-none sm:rounded-[44px] w-full h-[100dvh] max-h-[100dvh]">
+          <div className="fixed inset-0 sm:absolute sm:inset-0 z-[70] bg-[#09090b] flex flex-col overflow-y-auto px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(4rem,env(safe-area-inset-bottom))] text-white animate-in slide-in-from-right duration-200 select-none sm:rounded-[44px] w-full h-[100dvh] max-h-[100dvh]">
             {/* Top Bar: Voltar (<) na esquerda • Lixeira + Editar transação na direita */}
             <div className="flex items-center justify-between w-full pt-1 pb-3">
               <button
@@ -3351,7 +3363,7 @@ export function ExtratoClient({
 
             {/* Modal: Editar Transação */}
             {isEditTxModalOpen && (
-              <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
+              <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
                 <div className="w-full max-w-full sm:max-w-[420px] max-h-[85dvh] sm:max-h-[80vh] bg-[#141418] border border-white/10 rounded-t-[32px] sm:rounded-[32px] p-5 sm:p-6 text-white shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom">
                   {/* Header fixo */}
                   <div className="shrink-0 flex items-center justify-between pb-3 border-b border-white/10">
@@ -3476,6 +3488,7 @@ export function ExtratoClient({
 
       {/* Floating Liquid Glass Dock (activeTab="extrato", setinhas ativas, home volta para "/") */}
       <FloatingCofrinhoDock
+        hidden={isAnyOverlayOpen}
         activeTab="extrato"
         onAskCofrinho={onAskCofrinho || (() => console.log("Pergunte ao Pierre"))}
         onNavigateHome={() => (onNavigateToHome ? onNavigateToHome() : router.push("/"))}

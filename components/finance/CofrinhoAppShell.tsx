@@ -19,6 +19,7 @@ export function CofrinhoAppShell({
 }: CofrinhoAppShellProps) {
   const [currentTab, setCurrentTab] = useState<"home" | "extrato">(initialTab);
   const [isPrivacyHidden, setIsPrivacyHidden] = useState(false);
+  const [isExtratoOverlayOpen, setIsExtratoOverlayOpen] = useState(false);
 
   // Armazena a posição de rolagem de cada aba para manter o contexto do usuário
   const homeScrollRef = useRef(0);
@@ -142,12 +143,14 @@ export function CofrinhoAppShell({
             onNavigateToHome={() => handleSwitchTab("home")}
             onAskCofrinho={() => console.log("Pergunte ao Pierre")}
             onOpenMascot={() => console.log("Mascote Pierre")}
+            onOverlayChange={setIsExtratoOverlayOpen}
           />
         </div>
       </div>
 
-      {/* Floating Liquid Glass Dock FIXO e PERMANENTE (Nunca desmonta, sem flickers) */}
+      {/* Floating Liquid Glass Dock FIXO e PERMANENTE (oculto quando qualquer modal/overlay estiver aberto) */}
       <FloatingCofrinhoDock
+        hidden={isExtratoOverlayOpen}
         activeTab={currentTab}
         onNavigateHome={() => handleSwitchTab("home")}
         onTransfer={() => handleSwitchTab("extrato")}
