@@ -96,6 +96,12 @@ export interface ExtratoTransaction {
   dateGroup?: string;
   status?: "paid" | "pending";
   isFixed?: boolean;
+  splits?: { personId: string; amountOwed: number; percentage: number }[];
+  splitWith?: string[];
+  accountId?: string;
+  creditCardId?: string;
+  origin?: "open_finance" | "manual";
+  isHidden?: boolean;
 }
 
 export interface ExtratoCategory {

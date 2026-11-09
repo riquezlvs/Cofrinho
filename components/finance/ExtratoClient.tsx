@@ -26,7 +26,6 @@ import {
   Car,
   Pill,
   Music,
-  ArrowDownLeft,
   Home,
   Coffee,
   Utensils,
@@ -54,12 +53,25 @@ import {
   Award,
   Coins,
   Tag,
+  ChevronLeft,
+  ChevronRight,
+  Trash2,
+  History,
+  Landmark,
+  Receipt,
+  ShieldCheck,
+  MoreHorizontal,
 } from "lucide-react";
 import { FloatingCofrinhoDock } from "@/components/finance/FloatingCofrinhoDock";
 import { TransactionIcon } from "@/components/finance/TransactionIcon";
 import { ExtratoData, ExtratoTransaction, InstallmentScheduleItem, Person } from "@/types/finance";
-import { addTransactionAction, createPersonAction } from "@/app/actions/transactions";
-import { addMonths } from "@/lib/dateUtils";
+import {
+  addTransactionAction,
+  createPersonAction,
+  deleteTransactionAction,
+  updateTransactionAction,
+} from "@/app/actions/transactions";
+import { addMonths, formatLongPortugueseDate } from "@/lib/dateUtils";
 import { getGoogleFaviconUrl } from "@/lib/brands";
 
 export interface ExtratoClientProps {
@@ -73,8 +85,20 @@ export interface ExtratoClientProps {
 }
 
 type FilterType = "all" | "income" | "expense" | "payment";
-type PeriodFilter = "all" | "today" | "week" | "month";
-type SortOrder = "recent" | "highest" | "lowest";
+type PeriodFilter =
+  | "all"
+  | "today"
+  | "yesterday"
+  | "last7days"
+  | "last15days"
+  | "currentMonth"
+  | "lastMonth"
+  | "last6months"
+  | "thisYear"
+  | "lastYear"
+  | "custom";
+type SortOrder = "recent" | "oldest" | "highest" | "lowest";
+type OriginFilter = "open_finance" | "manual";
 
 interface CategoryItem {
   id: string;
@@ -407,6 +431,82 @@ function getAccountLogoType(
   return "other";
 }
 
+export function SantanderIcon({ className = "w-8 h-8" }: { className?: string }) {
+  return (
+    <div
+      className={`${className} rounded-full bg-[#ec0000] flex items-center justify-center shrink-0 shadow-sm`}
+    >
+      <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3.8 14.8c-.8.8-2 .9-2.9.4-.9-.6-1.5-1.5-1.9-2.4l-.1-.2-.1.2c-.4.9-1 1.8-1.9 2.4-.9.5-2.1.4-2.9-.4-.7-.7-.8-1.8-.3-2.6.4-.7 1.2-1.2 2-1.4l.7-.2-.5-.5c-.8-.7-1-1.8-.5-2.7.5-.9 1.5-1.3 2.5-1.1.9.2 1.6.8 1.9 1.7l.2.6.2-.6c.3-.9 1-1.5 1.9-1.7 1-.2 2 .2 2.5 1.1.5.9.3 2-.5 2.7l-.5.5.7.2c.8.2 1.6.7 2 1.4.5.8.4 1.9-.3 2.6z" />
+      </svg>
+    </div>
+  );
+}
+
+export function CarteiraPierreIcon({ className = "w-8 h-8" }: { className?: string }) {
+  return (
+    <div
+      className={`${className} rounded-full bg-[#09090b] border border-white/10 flex items-center justify-center shrink-0 overflow-hidden relative shadow-sm`}
+    >
+      <svg viewBox="0 0 40 40" className="w-full h-full" fill="none">
+        <rect width="40" height="40" fill="#09090b" />
+        <path d="M4 0 L8 40 M12 0 L15 40 M25 0 L28 40 M32 0 L36 40" stroke="#ffffff" strokeWidth="2.5" />
+        <path
+          d="M13 14 C13 11 16 11 17 14 C18 15 22 15 23 14 C24 11 27 11 27 14 C28 18 28 26 27 28 C25 31 15 31 13 28 C12 26 12 18 13 14 Z"
+          fill="#09090b"
+          stroke="#ffffff"
+          strokeWidth="1.8"
+        />
+        <circle cx="17.5" cy="20" r="1.3" fill="#ffffff" />
+        <circle cx="22.5" cy="20" r="1.3" fill="#ffffff" />
+        <path d="M19 23 L21 23 L20 24.5 Z" fill="#ffffff" />
+        <line x1="13.5" y1="21.5" x2="16.5" y2="22" stroke="#ffffff" strokeWidth="1" />
+        <line x1="23.5" y1="22" x2="26.5" y2="21.5" stroke="#ffffff" strokeWidth="1" />
+      </svg>
+    </div>
+  );
+}
+
+const filterCategoryPresets = [
+  { id: "cat-alimentacao", name: "Alimentação", icon: ShoppingCart, color: "#f97316" },
+  { id: "cat-compras", name: "Compras", icon: ShoppingBag, color: "#ec4899" },
+  { id: "cat-transporte", name: "Transporte", icon: Car, color: "#f59e0b" },
+  { id: "cat-financas", name: "Finanças", icon: Landmark, color: "#93c5fd" },
+  { id: "cat-renda", name: "Renda", icon: TrendingUp, color: "#86efac" },
+  { id: "cat-impostos", name: "Impostos e taxas", icon: Receipt, color: "#cbd5e1" },
+  { id: "cat-seguros", name: "Seguros", icon: ShieldCheck, color: "#67e8f9" },
+  { id: "cat-outros", name: "Outros", icon: MoreHorizontal, color: "#a1a1aa" },
+  { id: "cat-moradia", name: "Moradia & Contas", icon: Home, color: "#f59e0b" },
+  { id: "cat-lazer", name: "Lazer & Streaming", icon: Music, color: "#a855f7" },
+  { id: "cat-saude", name: "Saúde", icon: HeartPulse, color: "#f43f5e" },
+  { id: "cat-investimentos", name: "Investimentos", icon: Coins, color: "#38bdf8" },
+];
+
+const periodPills: { id: PeriodFilter; label: string; icon?: React.ComponentType<{ className?: string }> }[] = [
+  { id: "today", label: "Hoje" },
+  { id: "yesterday", label: "Ontem" },
+  { id: "last7days", label: "Últimos 7 dias" },
+  { id: "last15days", label: "Últimos 15 dias" },
+  { id: "currentMonth", label: "Mês atual" },
+  { id: "lastMonth", label: "Mês passado" },
+  { id: "last6months", label: "Últimos 6 meses" },
+  { id: "thisYear", label: "Este ano" },
+  { id: "lastYear", label: "Ano passado" },
+  { id: "custom", label: "Personalizado", icon: Calendar },
+];
+
+const sortOptions: { id: SortOrder; label: string }[] = [
+  { id: "recent", label: "Mais recentes" },
+  { id: "oldest", label: "Mais antigas" },
+  { id: "highest", label: "Maior valor" },
+  { id: "lowest", label: "Menor valor" },
+];
+
+const originOptions: { id: OriginFilter; label: string }[] = [
+  { id: "open_finance", label: "Open finance" },
+  { id: "manual", label: "Manuais" },
+];
+
 export function AccountBadge({
   tx,
   customClasses,
@@ -570,10 +670,26 @@ export function ExtratoClient({
   const [isCategoryPickerOpen, setIsCategoryPickerOpen] = useState(false);
   const [searchCatQuery, setSearchCatQuery] = useState("");
   const [selectedTx, setSelectedTx] = useState<ExtratoTransaction | null>(null);
+  const [isEditingSelectedTxCategory, setIsEditingSelectedTxCategory] = useState(false);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [isEditTxModalOpen, setIsEditTxModalOpen] = useState(false);
+  const [editTxTitle, setEditTxTitle] = useState("");
+  const [editTxCentsAmount, setEditTxCentsAmount] = useState(0);
+  const [editTxDate, setEditTxDate] = useState("");
+  const [editTxTime, setEditTxTime] = useState("");
+  const [editTxPaymentMethod, setEditTxPaymentMethod] = useState<string>("credit");
 
-  // Filtros avançados
-  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
+  // Filtros avançados adaptados às imagens do anexo
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("currentMonth");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [selectedBankIds, setSelectedBankIds] = useState<string[]>([]);
+  const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
+  const [selectedCategoryNames, setSelectedCategoryNames] = useState<string[]>([]);
+  const [showAllCategories, setShowAllCategories] = useState(false);
   const [sortOrder, setSortOrder] = useState<SortOrder>("recent");
+  const [selectedOrigins, setSelectedOrigins] = useState<OriginFilter[]>([]);
+  const [showHidden, setShowHidden] = useState(false);
 
   // Categorias, contas e pessoas do banco de dados / fallback
   const availableCategories = useMemo(() => {
@@ -603,6 +719,79 @@ export function ExtratoClient({
   const availableCards = useMemo(() => {
     return initialData.creditCards || [];
   }, [initialData.creditCards]);
+
+  // Lista de bancos disponíveis para o filtro (conforme imagem: Santander, Carteira Pierre, etc.)
+  const filterBanksList = useMemo(() => {
+    const list: { id: string; name: string; type?: string; logo?: string }[] = [];
+    const seen = new Set<string>();
+
+    const presets = [
+      { id: "acc-santander", name: "Santander", type: "checking", logo: "santander" },
+      { id: "acc-carteira", name: "Carteira Pierre", type: "cash", logo: "carteira_pierre" },
+    ];
+
+    presets.forEach((b) => {
+      seen.add(b.name.toLowerCase());
+      list.push(b);
+    });
+
+    (availableAccounts || []).forEach((acc) => {
+      const key = acc.name.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({
+          id: acc.id,
+          name: acc.name,
+          type: acc.type,
+          logo: getAccountLogoType(acc.name, undefined, acc.type),
+        });
+      }
+    });
+
+    transactions.forEach((tx) => {
+      const name = tx.accountName || tx.accountOrCard;
+      if (name && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        list.push({
+          id: `acc-${name.toLowerCase().replace(/\s+/g, "-")}`,
+          name,
+          type: tx.accountType || "checking",
+          logo: getAccountLogoType(name, undefined, tx.paymentMethod),
+        });
+      }
+    });
+
+    return list;
+  }, [availableAccounts, transactions]);
+
+  const toggleBankFilter = (bankId: string) => {
+    setSelectedBankIds((prev) =>
+      prev.includes(bankId) ? prev.filter((id) => id !== bankId) : [...prev, bankId]
+    );
+  };
+
+  const toggleCardFilter = (cardId: string) => {
+    setSelectedCardIds((prev) =>
+      prev.includes(cardId) ? prev.filter((id) => id !== cardId) : [...prev, cardId]
+    );
+  };
+
+  const toggleCategoryFilter = (catName: string) => {
+    setSelectedCategoryNames((prev) =>
+      prev.includes(catName) ? prev.filter((n) => n !== catName) : [...prev, catName]
+    );
+  };
+
+  const toggleOriginFilter = (origin: OriginFilter) => {
+    setSelectedOrigins((prev) =>
+      prev.includes(origin) ? prev.filter((o) => o !== origin) : [...prev, origin]
+    );
+  };
+
+  const visibleCategories = useMemo(() => {
+    if (showAllCategories) return filterCategoryPresets;
+    return filterCategoryPresets.slice(0, 8);
+  }, [showAllCategories]);
 
   // Lista de pessoas para rateio (splits)
   const [people, setPeople] = useState<Person[]>(
@@ -883,10 +1072,24 @@ export function ExtratoClient({
   const appliedFilterCount = useMemo(() => {
     let count = 0;
     if (activeFilter !== "all") count += 1;
-    if (periodFilter !== "all") count += 1;
+    if (periodFilter !== "all" && periodFilter !== "currentMonth") count += 1;
     if (sortOrder !== "recent") count += 1;
+    count += selectedBankIds.length;
+    count += selectedCardIds.length;
+    count += selectedCategoryNames.length;
+    count += selectedOrigins.length;
+    if (showHidden) count += 1;
     return count;
-  }, [activeFilter, periodFilter, sortOrder]);
+  }, [
+    activeFilter,
+    periodFilter,
+    sortOrder,
+    selectedBankIds,
+    selectedCardIds,
+    selectedCategoryNames,
+    selectedOrigins,
+    showHidden,
+  ]);
 
   const isAnyFilterActive = appliedFilterCount > 0;
 
@@ -900,8 +1103,233 @@ export function ExtratoClient({
     setActiveFilter("all");
     setSearchQuery("");
     setPeriodFilter("all");
+    setCustomStartDate("");
+    setCustomEndDate("");
+    setSelectedBankIds([]);
+    setSelectedCardIds([]);
+    setSelectedCategoryNames([]);
     setSortOrder("recent");
+    setSelectedOrigins([]);
+    setShowHidden(false);
   };
+
+  // Transações filtradas
+  const filteredTransactions = useMemo(() => {
+    const todayStr = "2026-11-08";
+    const refDate = new Date();
+
+    return transactions
+      .filter((tx) => {
+        // 0. Filtro ocultos: se showHidden for false e a transação estiver oculta, não exibe
+        if (!showHidden && tx.isHidden) {
+          return false;
+        }
+
+        // 1. Filtro por tipo
+        if (activeFilter === "income" && tx.type !== "income") return false;
+        if (activeFilter === "expense" && tx.type !== "expense") return false;
+        if (activeFilter === "payment") {
+          const m = (tx.paymentMethod || "").toLowerCase();
+          const d = (tx.description || "").toLowerCase();
+          const isPay =
+            m.includes("credit") ||
+            m.includes("debit") ||
+            m.includes("cartão") ||
+            m.includes("boleto") ||
+            d.includes("cartão") ||
+            d.includes("fatura");
+          if (!isPay) return false;
+        }
+
+        // 2. Filtro por busca
+        if (searchQuery.trim()) {
+          const query = searchQuery.toLowerCase();
+          const title = (tx.title || "").toLowerCase();
+          const desc = (tx.description || "").toLowerCase();
+          const cat = (tx.categoryName || "").toLowerCase();
+          const method = (tx.paymentMethod || "").toLowerCase();
+          const account = (tx.accountName || tx.accountOrCard || "").toLowerCase();
+          const amountStr = tx.amount.toString();
+          if (
+            !title.includes(query) &&
+            !desc.includes(query) &&
+            !cat.includes(query) &&
+            !method.includes(query) &&
+            !account.includes(query) &&
+            !amountStr.includes(query)
+          ) {
+            return false;
+          }
+        }
+
+        // 3. Filtro por período
+        const txDateStr = tx.transactionDate?.includes("T")
+          ? tx.transactionDate.split("T")[0]
+          : tx.transactionDate || "";
+
+        if (periodFilter !== "all" && txDateStr) {
+          const [y, m, d] = txDateStr.split("-").map(Number);
+          const txDate = new Date(y, m - 1, d);
+
+          const refYear = refDate.getFullYear();
+          const refMonth = refDate.getMonth();
+          const refDay = refDate.getDate();
+          const todayDate = new Date(refYear, refMonth, refDay);
+
+          if (periodFilter === "today") {
+            const isToday =
+              txDateStr === todayStr ||
+              (y === refYear && m - 1 === refMonth && d === refDay);
+            if (!isToday) return false;
+          } else if (periodFilter === "yesterday") {
+            const yesterdayDate = new Date(refYear, refMonth, refDay - 1);
+            const yParts = yesterdayDate.toISOString().split("T")[0];
+            const isYesterday = txDateStr === "2026-11-07" || txDateStr === yParts;
+            if (!isYesterday) return false;
+          } else if (periodFilter === "last7days") {
+            const past7 = new Date(refYear, refMonth, refDay - 7);
+            if (txDate < past7 || txDate > todayDate) return false;
+          } else if (periodFilter === "last15days") {
+            const past15 = new Date(refYear, refMonth, refDay - 15);
+            if (txDate < past15 || txDate > todayDate) return false;
+          } else if (periodFilter === "currentMonth") {
+            const isCurrMonth = y === refYear && m - 1 === refMonth;
+            if (!isCurrMonth) return false;
+          } else if (periodFilter === "lastMonth") {
+            const lastMonth = refMonth === 0 ? 11 : refMonth - 1;
+            const lastMonthYear = refMonth === 0 ? refYear - 1 : refYear;
+            if (y !== lastMonthYear || m - 1 !== lastMonth) return false;
+          } else if (periodFilter === "last6months") {
+            const past6Months = new Date(refYear, refMonth - 6, refDay);
+            if (txDate < past6Months || txDate > todayDate) return false;
+          } else if (periodFilter === "thisYear") {
+            if (y !== refYear) return false;
+          } else if (periodFilter === "lastYear") {
+            if (y !== refYear - 1) return false;
+          } else if (periodFilter === "custom") {
+            if (customStartDate && txDateStr < customStartDate) return false;
+            if (customEndDate && txDateStr > customEndDate) return false;
+          }
+        }
+
+        // 4. Filtro por Bancos
+        if (selectedBankIds.length > 0) {
+          const txBankName = (tx.accountName || tx.accountOrCard || "").toLowerCase();
+          const txBankId = tx.accountId || "";
+          const matchesBank = selectedBankIds.some((selectedId) => {
+            const b = filterBanksList.find((bank) => bank.id === selectedId);
+            if (!b) return false;
+            const bName = b.name.toLowerCase();
+            return (
+              txBankName.includes(bName) ||
+              bName.includes(txBankName) ||
+              txBankId === b.id ||
+              (bName.includes("carteira") && (txBankName.includes("carteira") || tx.paymentMethod === "cash"))
+            );
+          });
+          if (!matchesBank) return false;
+        }
+
+        // 5. Filtro por Cartões
+        if (selectedCardIds.length > 0) {
+          const txCardName = (tx.accountOrCard || tx.accountName || "").toLowerCase();
+          const txCardId = tx.creditCardId || "";
+          const matchesCard = selectedCardIds.some((cardId) => {
+            const c = availableCards.find((card) => card.id === cardId);
+            if (!c) return false;
+            const cName = c.name.toLowerCase();
+            return (
+              txCardName.includes(cName) ||
+              cName.includes(txCardName) ||
+              txCardId === c.id ||
+              tx.paymentMethod === "credit"
+            );
+          });
+          if (!matchesCard) return false;
+        }
+
+        // 6. Filtro por Categorias
+        if (selectedCategoryNames.length > 0) {
+          const txCat = (tx.categoryName || "").toLowerCase();
+          const matchesCategory = selectedCategoryNames.some((catName) => {
+            const sel = catName.toLowerCase();
+            if (txCat.includes(sel) || sel.includes(txCat)) return true;
+            if (sel === "alimentação") {
+              return /aliment|mercado|comida|restaurante|delivery|super|snack|lanche|café/i.test(txCat);
+            }
+            if (sel === "compras") {
+              return /compra|shopping|loja|online|eletrônic|roupa/i.test(txCat);
+            }
+            if (sel === "transporte") {
+              return /transporte|uber|carro|combust|posto|estacion|ônibus|metrô|pedágio/i.test(txCat);
+            }
+            if (sel === "finanças") {
+              return /finan|banco|taxa|juros|tarifa|câmbio|transferência/i.test(txCat);
+            }
+            if (sel === "renda") {
+              return /renda|salário|freelance|entrada|bônus|reembolso|ganho/i.test(txCat);
+            }
+            if (sel === "impostos e taxas") {
+              return /imposto|tributo|taxa|tarifa|darf|tribut|ipva|iptu/i.test(txCat);
+            }
+            if (sel === "seguros") {
+              return /seguro|vida|auto|residencial|plano/i.test(txCat);
+            }
+            if (sel === "moradia & contas") {
+              return /moradia|aluguel|condomínio|luz|água|gás|internet|casa/i.test(txCat);
+            }
+            if (sel === "lazer & streaming") {
+              return /lazer|stream|netflix|spotify|cinema|jogo|viagem/i.test(txCat);
+            }
+            if (sel === "saúde") {
+              return /saúde|farmácia|médic|exame|consulta|hospital|remédio/i.test(txCat);
+            }
+            if (sel === "investimentos") {
+              return /invest|ação|ações|cdi|rendimento|fundo|dividendo/i.test(txCat);
+            }
+            return false;
+          });
+          if (!matchesCategory) return false;
+        }
+
+        // 7. Filtro por Origem
+        if (selectedOrigins.length > 0) {
+          const isOF =
+            tx.origin === "open_finance" ||
+            tx.id.toLowerCase().includes("of") ||
+            (tx.accountName && tx.accountName.toLowerCase().includes("santander"));
+          const txOrigin: OriginFilter = isOF ? "open_finance" : "manual";
+          if (!selectedOrigins.includes(txOrigin)) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortOrder === "highest") return b.amount - a.amount;
+        if (sortOrder === "lowest") return a.amount - b.amount;
+        if (sortOrder === "oldest") {
+          return new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime();
+        }
+        return (
+          new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
+        );
+      });
+  }, [
+    transactions,
+    activeFilter,
+    searchQuery,
+    periodFilter,
+    customStartDate,
+    customEndDate,
+    selectedBankIds,
+    selectedCardIds,
+    selectedCategoryNames,
+    sortOrder,
+    selectedOrigins,
+    showHidden,
+    filterBanksList,
+    availableCards,
+  ]);
 
   // Cadastrar nova pessoa inline no banco e já selecionar
   const handleQuickRegisterPerson = async (e: React.FormEvent) => {
@@ -940,61 +1368,7 @@ export function ExtratoClient({
     }
   };
 
-  // Transações filtradas
-  const filteredTransactions = useMemo(() => {
-    return transactions
-      .filter((tx) => {
-        // 1. Filtro por tipo
-        if (activeFilter === "income" && tx.type !== "income") return false;
-        if (activeFilter === "expense" && tx.type !== "expense") return false;
-        if (activeFilter === "payment") {
-          const m = (tx.paymentMethod || "").toLowerCase();
-          const d = (tx.description || "").toLowerCase();
-          const isPay =
-            m.includes("credit") ||
-            m.includes("debit") ||
-            m.includes("cartão") ||
-            m.includes("boleto") ||
-            d.includes("cartão") ||
-            d.includes("fatura");
-          if (!isPay) return false;
-        }
 
-        // 2. Filtro por busca
-        if (searchQuery.trim()) {
-          const query = searchQuery.toLowerCase();
-          const title = (tx.title || "").toLowerCase();
-          const desc = (tx.description || "").toLowerCase();
-          const cat = (tx.categoryName || "").toLowerCase();
-          const method = (tx.paymentMethod || "").toLowerCase();
-          const amountStr = tx.amount.toString();
-          if (
-            !title.includes(query) &&
-            !desc.includes(query) &&
-            !cat.includes(query) &&
-            !method.includes(query) &&
-            !amountStr.includes(query)
-          ) {
-            return false;
-          }
-        }
-
-        // 3. Filtro por período
-        if (periodFilter === "today") {
-          const today = new Date().toISOString().split("T")[0];
-          if (tx.transactionDate !== today) return false;
-        }
-
-        return true;
-      })
-      .sort((a, b) => {
-        if (sortOrder === "highest") return b.amount - a.amount;
-        if (sortOrder === "lowest") return a.amount - b.amount;
-        return (
-          new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
-        );
-      });
-  }, [transactions, activeFilter, searchQuery, periodFilter, sortOrder]);
 
   // Formatação de data curta da transação (ex: "8 de nov")
   const formatTransactionDate = (dateStr: string) => {
@@ -1454,6 +1828,11 @@ export function ExtratoClient({
                               {tx.isFixed && (
                                 <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-400/15 text-blue-300 border border-blue-400/30 tracking-tight">
                                   Fixa
+                                </span>
+                              )}
+                              {tx.isHidden && (
+                                <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-zinc-800 text-zinc-400 border border-zinc-700/80 inline-flex items-center gap-1 tracking-tight">
+                                  <EyeOff className="w-2.5 h-2.5" /> Oculta
                                 </span>
                               )}
                             </div>
@@ -2229,12 +2608,15 @@ export function ExtratoClient({
 
       {/* TELA DE SELEÇÃO DE CATEGORIAS (Fiel à imagem em anexo) */}
       {isCategoryPickerOpen && (
-        <div className="absolute inset-0 z-50 bg-[#09090b] flex flex-col p-5 sm:p-6 text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden">
+        <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col p-5 sm:p-6 text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))]">
           {/* Header com botão Fechar X circular na direita */}
           <div className="flex items-center justify-end pt-1 pb-3">
             <button
               type="button"
-              onClick={() => setIsCategoryPickerOpen(false)}
+              onClick={() => {
+                setIsCategoryPickerOpen(false);
+                setIsEditingSelectedTxCategory(false);
+              }}
               className="w-10 h-10 rounded-full bg-[#1c1c22] border border-white/5 hover:bg-[#25252c] flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition cursor-pointer"
               aria-label="Fechar"
             >
@@ -2303,6 +2685,24 @@ export function ExtratoClient({
                         <div
                           key={item.id}
                           onClick={() => {
+                            if (isEditingSelectedTxCategory && selectedTx) {
+                              const updatedTx = {
+                                ...selectedTx,
+                                categoryName: item.name,
+                                categoryColor: item.color,
+                                categoryIcon: item.iconName,
+                              };
+                              setSelectedTx(updatedTx);
+                              setTransactions((prev) =>
+                                prev.map((t) => (t.id === selectedTx.id ? updatedTx : t))
+                              );
+                              updateTransactionAction(selectedTx.id, {
+                                categoryId: item.id.startsWith("sub-") ? undefined : item.id,
+                              });
+                              setIsEditingSelectedTxCategory(false);
+                              setIsCategoryPickerOpen(false);
+                              return;
+                            }
                             setNewCategoryId(item.id);
                             setSelectedCategoryName(item.name);
                             setSelectedCategoryColor(item.color);
@@ -2342,128 +2742,341 @@ export function ExtratoClient({
         </div>
       )}
 
-      {/* Modal: Filtros Avançados */}
+      {/* Modal / Tela de Filtros - Adaptado fielmente às imagens de referência */}
       {isFilterSheetOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200"
-          onClick={() => setIsFilterSheetOpen(false)}
-        >
-          <div
-            className="w-full max-w-full sm:max-w-[420px] bg-[#141418] border border-white/10 rounded-t-[32px] sm:rounded-[32px] p-6 text-white shadow-2xl flex flex-col gap-5 animate-in slide-in-from-bottom duration-300"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <h3 className="text-lg font-bold text-white">Filtros Avançados</h3>
-              <button
-                type="button"
-                onClick={() => setIsFilterSheetOpen(false)}
-                className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-zinc-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col justify-between text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden">
+          {/* Header com Título Filtros e botão circular X à direita */}
+          <div className="flex items-center justify-between px-5 sm:px-6 pt-5 pb-2 shrink-0">
+            <h2 className="text-2xl sm:text-[28px] font-bold tracking-tight text-white">
+              Filtros
+            </h2>
+            <button
+              type="button"
+              onClick={() => setIsFilterSheetOpen(false)}
+              className="w-9 h-9 rounded-full bg-[#27262c] hover:bg-[#34333b] flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition cursor-pointer"
+              aria-label="Fechar filtros"
+            >
+              <X className="w-4.5 h-4.5 stroke-[2.5]" />
+            </button>
+          </div>
 
-            {/* Período */}
-            <div className="space-y-2">
-              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+          {/* Conteúdo com Scroll vertical */}
+          <div className="flex-1 overflow-y-auto no-scrollbar px-5 sm:px-6 py-2 space-y-6">
+            {/* 1. SEÇÃO: Período */}
+            <div className="space-y-3">
+              <h3 className="text-[15px] font-semibold text-white">
                 Período
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { id: "all", label: "Todo o histórico" },
-                  { id: "today", label: "Hoje" },
-                  { id: "week", label: "Últimos 7 dias" },
-                  { id: "month", label: "Este mês" },
-                ].map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setPeriodFilter(p.id as PeriodFilter)}
-                    className={`px-3 py-2.5 rounded-xl text-xs font-medium border text-left transition ${
-                      periodFilter === p.id
-                        ? "bg-[#ccff00] text-black border-[#ccff00] font-bold"
-                        : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {periodPills.map((p) => {
+                  const isSelected = periodFilter === p.id;
+                  const Icon = p.icon;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setPeriodFilter(p.id)}
+                      className={`px-4 py-2 rounded-full text-xs sm:text-sm font-medium border transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 ${
+                        isSelected
+                          ? "bg-white text-black border-white font-semibold shadow-sm"
+                          : "bg-[#141418] border-zinc-800 text-zinc-300 hover:border-zinc-700"
+                      }`}
+                    >
+                      {Icon && (
+                        <Icon className={`w-3.5 h-3.5 ${isSelected ? "text-black" : "text-zinc-400"}`} />
+                      )}
+                      <span>{p.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Data personalizada caso 'Personalizado' esteja ativo */}
+              {periodFilter === "custom" && (
+                <div className="grid grid-cols-2 gap-2.5 pt-2 mt-1 border-t border-white/5 animate-in fade-in duration-200">
+                  <div>
+                    <label className="text-[11px] font-medium text-zinc-400 block mb-1">
+                      De
+                    </label>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-[#141418] border border-white/10 text-xs text-white focus:outline-none focus:border-white/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-medium text-zinc-400 block mb-1">
+                      Até
+                    </label>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-[#141418] border border-white/10 text-xs text-white focus:outline-none focus:border-white/30"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 2. SEÇÃO: Bancos */}
+            <div className="space-y-3">
+              <h3 className="text-[15px] font-semibold text-white">
+                Bancos
+              </h3>
+              <div className="flex flex-col divide-y divide-white/[0.04]">
+                {filterBanksList.map((bank) => {
+                  const isSelected = selectedBankIds.includes(bank.id);
+                  return (
+                    <div
+                      key={bank.id}
+                      onClick={() => toggleBankFilter(bank.id)}
+                      className="flex items-center justify-between py-3 cursor-pointer group active:opacity-75 transition select-none"
+                    >
+                      <div className="flex items-center gap-3">
+                        {bank.logo === "santander" ? (
+                          <SantanderIcon className="w-8 h-8" />
+                        ) : bank.logo === "carteira_pierre" ? (
+                          <CarteiraPierreIcon className="w-8 h-8" />
+                        ) : bank.logo === "nubank" ? (
+                          <div className="w-8 h-8 rounded-full bg-[#820AD1] flex items-center justify-center shrink-0 shadow-sm">
+                            <span className="text-[11px] font-black text-white">Nu</span>
+                          </div>
+                        ) : bank.logo === "vr" ? (
+                          <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center shrink-0 shadow-sm">
+                            <Utensils className="w-4 h-4 text-white" />
+                          </div>
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-zinc-800 border border-white/10 flex items-center justify-center shrink-0 text-xs font-bold text-white shadow-sm">
+                            {bank.name[0]?.toUpperCase() || "B"}
+                          </div>
+                        )}
+                        <span className="text-sm sm:text-[15px] font-medium text-zinc-200 group-hover:text-white transition">
+                          {bank.name}
+                        </span>
+                      </div>
+
+                      <div
+                        className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                          isSelected
+                            ? "bg-white border-white text-black"
+                            : "border-zinc-700 bg-transparent group-hover:border-zinc-500"
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Ordenação */}
-            <div className="space-y-2">
-              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+            {/* 3. SEÇÃO: Cartões */}
+            <div className="space-y-3">
+              <h3 className="text-[15px] font-semibold text-white">
+                Cartões
+              </h3>
+              {availableCards.length === 0 ? (
+                <p className="text-sm text-zinc-500 py-1 font-normal">
+                  Nenhum item disponível.
+                </p>
+              ) : (
+                <div className="flex flex-col divide-y divide-white/[0.04]">
+                  {availableCards.map((card) => {
+                    const isSelected = selectedCardIds.includes(card.id);
+                    return (
+                      <div
+                        key={card.id}
+                        onClick={() => toggleCardFilter(card.id)}
+                        className="flex items-center justify-between py-3 cursor-pointer group active:opacity-75 transition select-none"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center text-zinc-300 shrink-0">
+                            <CreditCard className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm sm:text-[15px] font-medium text-zinc-200 group-hover:text-white transition">
+                            {card.name}
+                          </span>
+                        </div>
+
+                        <div
+                          className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                            isSelected
+                              ? "bg-white border-white text-black"
+                              : "border-zinc-700 bg-transparent group-hover:border-zinc-500"
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 4. SEÇÃO: Categoria */}
+            <div className="space-y-3">
+              <h3 className="text-[15px] font-semibold text-white">
+                Categoria
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {visibleCategories.map((cat) => {
+                  const isSelected = selectedCategoryNames.includes(cat.name);
+                  const Icon = cat.icon;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => toggleCategoryFilter(cat.name)}
+                      className={`px-3.5 py-2 rounded-full text-xs sm:text-sm font-medium border transition-all active:scale-95 cursor-pointer flex items-center gap-2 ${
+                        isSelected
+                          ? "bg-white text-black border-white font-semibold shadow-sm"
+                          : "bg-[#141418] border-zinc-800 text-zinc-300 hover:border-zinc-700"
+                      }`}
+                    >
+                      <Icon
+                        className="w-4 h-4"
+                        style={{ color: isSelected ? "#000000" : cat.color }}
+                      />
+                      <span>{cat.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {filterCategoryPresets.length > 8 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllCategories((prev) => !prev)}
+                  className="text-xs sm:text-sm text-zinc-400 hover:text-white flex items-center gap-1 pt-1 transition cursor-pointer"
+                >
+                  <span>{showAllCategories ? "Mostrar menos" : "Mostrar mais"}</span>
+                  <ChevronRight
+                    className={`w-3.5 h-3.5 transition-transform ${
+                      showAllCategories ? "-rotate-90" : "rotate-0"
+                    }`}
+                  />
+                </button>
+              )}
+            </div>
+
+            {/* 5. SEÇÃO: Ordenar por */}
+            <div className="space-y-3">
+              <h3 className="text-[15px] font-semibold text-white">
                 Ordenar por
-              </span>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: "recent", label: "Recentes" },
-                  { id: "highest", label: "Maior R$" },
-                  { id: "lowest", label: "Menor R$" },
-                ].map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setSortOrder(s.id as SortOrder)}
-                    className={`px-3 py-2.5 rounded-xl text-xs font-medium border text-center transition ${
-                      sortOrder === s.id
-                        ? "bg-[#ccff00] text-black border-[#ccff00] font-bold"
-                        : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {sortOptions.map((opt) => {
+                  const isSelected = sortOrder === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setSortOrder(opt.id)}
+                      className={`px-4 py-2 rounded-full text-xs sm:text-sm font-medium border transition-all active:scale-95 cursor-pointer ${
+                        isSelected
+                          ? "bg-white text-black border-white font-semibold shadow-sm"
+                          : "bg-[#141418] border-zinc-800 text-zinc-300 hover:border-zinc-700"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Botões de Ação */}
-            <div className="flex items-center gap-3 pt-2">
+            {/* 6. SEÇÃO: Origem */}
+            <div className="space-y-3">
+              <h3 className="text-[15px] font-semibold text-white">
+                Origem
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {originOptions.map((opt) => {
+                  const isSelected = selectedOrigins.includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => toggleOriginFilter(opt.id)}
+                      className={`px-4 py-2 rounded-full text-xs sm:text-sm font-medium border transition-all active:scale-95 cursor-pointer ${
+                        isSelected
+                          ? "bg-white text-black border-white font-semibold shadow-sm"
+                          : "bg-[#141418] border-zinc-800 text-zinc-300 hover:border-zinc-700"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 7. SEÇÃO: Mostrar ocultos */}
+            <div className="flex items-center justify-between py-2 border-t border-white/[0.04]">
+              <div className="flex flex-col">
+                <span className="text-[15px] font-semibold text-white">
+                  Mostrar ocultos
+                </span>
+                <span className="text-xs text-zinc-400 mt-0.5">
+                  Exibe transações ocultadas no extrato.
+                </span>
+              </div>
               <button
                 type="button"
-                onClick={() => {
-                  clearAllFilters();
-                  setIsFilterSheetOpen(false);
-                }}
-                className="flex-1 py-3 rounded-full border border-white/10 text-zinc-300 text-sm font-semibold hover:bg-white/5 active:scale-95 transition"
+                onClick={() => setShowHidden((prev) => !prev)}
+                aria-label="Mostrar ocultos"
+                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors cursor-pointer shrink-0 ${
+                  showHidden ? "bg-white" : "bg-zinc-800"
+                }`}
               >
-                Limpar
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsFilterSheetOpen(false)}
-                className="flex-1 py-3 rounded-full bg-[#ccff00] text-black text-sm font-bold active:scale-95 transition shadow-md"
-              >
-                Aplicar
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full transition-transform ${
+                    showHidden ? "translate-x-6 bg-black" : "translate-x-1 bg-zinc-400"
+                  }`}
+                />
               </button>
             </div>
+          </div>
+
+          {/* Footer Fixo: Mostrar resultados & Limpar tudo */}
+          <div className="shrink-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/98 to-transparent pt-3 pb-6 px-5 sm:px-6 flex flex-col items-center gap-2 border-t border-white/[0.06]">
+            <button
+              type="button"
+              onClick={() => setIsFilterSheetOpen(false)}
+              className="w-full py-3.5 sm:py-4 rounded-full bg-white text-black font-bold text-sm sm:text-base hover:bg-zinc-200 active:scale-[0.98] transition shadow-lg cursor-pointer flex items-center justify-center gap-2"
+            >
+              Mostrar resultados
+            </button>
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="text-xs sm:text-sm font-medium text-zinc-400 hover:text-white active:scale-95 transition cursor-pointer py-1.5"
+            >
+              Limpar tudo
+            </button>
           </div>
         </div>
       )}
 
-      {/* Modal: Detalhes da Transação */}
+      {/* TELA DE DETALHES DA TRANSAÇÃO (Fiel à imagem em anexo) */}
       {selectedTx && (() => {
         const selectedPm = getPaymentMethodDetails(selectedTx.paymentMethod);
         const selectedAccount =
           selectedTx.accountName ||
           selectedTx.accountOrCard ||
-          (selectedTx.paymentMethod === "cash" ? "Dinheiro em Espécie" : "Conta Nubank");
-        const selectedAccountType = getAccountTypeLabel(
-          selectedTx.accountType,
-          selectedTx.paymentMethod,
-          selectedAccount
-        );
+          (selectedTx.paymentMethod === "cash" ? "Dinheiro em Espécie" : "Carteira Pierre");
         const hasInstallments = Boolean(
           selectedTx.installmentTotal && selectedTx.installmentTotal > 1
         );
         const currentInst = selectedTx.installmentNumber || 1;
         const totalInst = selectedTx.installmentTotal || 1;
-        const remainingInst = Math.max(0, totalInst - currentInst);
         const totalValue =
           selectedTx.originalTotalAmount || selectedTx.amount * totalInst;
 
-        // Cronograma completo de datas de parcelamento
+        // Cronograma de datas de parcelamento
         const scheduleList: InstallmentScheduleItem[] = [];
         if (hasInstallments) {
           if (selectedTx.installmentSchedule && selectedTx.installmentSchedule.length > 0) {
@@ -2486,224 +3099,415 @@ export function ExtratoClient({
           }
         }
 
+        const handleToggleRecurring = async () => {
+          const nextIsFixed = !selectedTx.isFixed;
+          const updatedTx: ExtratoTransaction = { ...selectedTx, isFixed: nextIsFixed };
+          setSelectedTx(updatedTx);
+          setTransactions((prev) =>
+            prev.map((t) => (t.id === selectedTx.id ? updatedTx : t))
+          );
+          await updateTransactionAction(selectedTx.id, { isFixed: nextIsFixed });
+        };
+
+        const handleStartEdit = () => {
+          setEditTxTitle(selectedTx.title);
+          setEditTxCentsAmount(Math.round(selectedTx.amount * 100));
+          const rawDate = selectedTx.transactionDate || "";
+          setEditTxDate(rawDate.includes("T") ? rawDate.split("T")[0] : rawDate || "2026-11-08");
+          setEditTxTime(rawDate.includes("T") ? rawDate.split("T")[1]?.slice(0, 5) || "12:00" : "12:00");
+          setEditTxPaymentMethod(selectedTx.paymentMethod || "credit");
+          setIsEditTxModalOpen(true);
+        };
+
+        const handleDeleteTx = async () => {
+          const txId = selectedTx.id;
+          setTransactions((prev) => prev.filter((t) => t.id !== txId));
+          setSelectedTx(null);
+          setIsConfirmDeleteOpen(false);
+          await deleteTransactionAction(txId);
+        };
+
+        const handleToggleHideSelectedTx = () => {
+          const nextIsHidden = !selectedTx.isHidden;
+          const updatedTx: ExtratoTransaction = { ...selectedTx, isHidden: nextIsHidden };
+          setSelectedTx(updatedTx);
+          setTransactions((prev) =>
+            prev.map((t) => (t.id === selectedTx.id ? updatedTx : t))
+          );
+        };
+
         return (
-          <div
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200"
-            onClick={() => setSelectedTx(null)}
-          >
-            <div
-              className="w-full max-w-full sm:max-w-[420px] bg-[#141418] border border-white/10 rounded-t-[32px] sm:rounded-[32px] p-6 text-white shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom duration-300"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <h3 className="text-base font-bold text-white">Detalhes da Atividade</h3>
-                <button
-                  type="button"
-                  onClick={() => setSelectedTx(null)}
-                  className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-zinc-400 hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="flex flex-col items-center text-center py-2">
-                <div className="relative">
-                  <TransactionIcon
-                    title={selectedTx.title}
-                    categoryIcon={selectedTx.categoryIcon}
-                    type={selectedTx.type}
-                    size={56}
-                  />
-                  {renderAccountBadge(selectedTx, "w-6 h-6 -bottom-1 -right-1")}
-                </div>
-                <span className="text-lg font-bold text-white mt-3">{selectedTx.title}</span>
-                <span
-                  className={`text-2xl font-black font-mono mt-1 ${
-                    selectedTx.type === "income" ? "text-[#52e374]" : "text-white"
-                  } ${isPrivacyHidden ? "balance-blur" : ""}`}
-                >
-                  {selectedTx.type === "income" ? "+" : "-"} R${" "}
-                  {formatCurrency(selectedTx.amount)}
-                </span>
-                {hasInstallments && (
-                  <span className="text-xs text-zinc-400 font-mono mt-1">
-                    Parcela {currentInst} de {totalInst} • Total R$ {formatCurrency(totalValue)}
-                  </span>
-                )}
-              </div>
-
-              {/* Destaque para Compra Parcelada */}
-              {hasInstallments && (
-                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex flex-col gap-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
-                      <Layers className="w-4 h-4 text-amber-400" />
-                      Compra Parcelada no Cartão
-                    </span>
-                    <span className="text-xs font-bold font-mono text-white px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-400/30">
-                      {currentInst}/{totalInst}x
-                    </span>
-                  </div>
-
-                  {/* Barra de Progresso do Parcelamento */}
-                  <div className="w-full h-2 rounded-full bg-black/60 overflow-hidden border border-white/5">
-                    <div
-                      className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all"
-                      style={{
-                        width: `${Math.min(100, Math.max(5, (currentInst / totalInst) * 100))}%`,
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-0.5">
-                    <span>
-                      {remainingInst > 0
-                        ? `${remainingInst} parcela${remainingInst > 1 ? "s" : ""} a vencer`
-                        : "Última parcela!"}
-                    </span>
-                    <span className="font-mono text-zinc-300">
-                      Total: R$ {formatCurrency(totalValue)}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Cronograma de Datas de Parcelamento */}
-              {hasInstallments && scheduleList.length > 0 && (
-                <div className="p-3.5 rounded-2xl bg-black/40 border border-white/5 flex flex-col gap-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-amber-400" />
-                      Datas das Parcelas
-                    </span>
-                    <span className="text-[11px] text-zinc-500 font-mono">
-                      {totalInst} parcelas mensais
-                    </span>
-                  </div>
-
-                  <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto no-scrollbar pr-0.5">
-                    {scheduleList.map((item) => {
-                      const isSelected = item.number === currentInst;
-                      return (
-                        <div
-                          key={item.number}
-                          className={`flex items-center justify-between p-2 rounded-xl text-xs transition ${
-                            isSelected
-                              ? "bg-amber-400/15 border border-amber-400/30 text-white font-semibold"
-                              : "bg-white/[0.02] border border-white/5 text-zinc-400"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                                item.status === "paid"
-                                  ? "bg-emerald-400/20 text-emerald-300"
-                                  : isSelected
-                                  ? "bg-amber-400 text-black font-bold"
-                                  : "bg-zinc-800 text-zinc-400"
-                              }`}
-                            >
-                              {item.status === "paid" ? "✓" : item.number}
-                            </span>
-                            <span className={isSelected ? "text-amber-200" : "text-zinc-300"}>
-                              Parcela {item.number}/{item.total}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-zinc-300">{item.formattedDate}</span>
-                            <span
-                              className={`text-[10px] px-1.5 py-0.5 rounded ${
-                                item.status === "paid"
-                                  ? "bg-emerald-500/10 text-emerald-400"
-                                  : isSelected
-                                  ? "bg-amber-400/20 text-amber-300 font-medium"
-                                  : "bg-white/5 text-zinc-500"
-                              }`}
-                            >
-                              {item.status === "paid" ? "Paga" : isSelected ? "Atual" : "A vencer"}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2.5 bg-black/30 p-4 rounded-2xl border border-white/5 text-xs">
-                {/* Data e Horário */}
-                <div className="flex justify-between items-center">
-                  <span className="text-zinc-400">
-                    {hasInstallments ? "Data desta Parcela" : "Data"}
-                  </span>
-                  <span className="text-white font-medium">
-                    {selectedTx.transactionDate?.replace("T", " às ").slice(0, 22) || "Hoje"}
-                  </span>
-                </div>
-
-                {/* Forma de Pagamento */}
-                <div className="flex justify-between items-center">
-                  <span className="text-zinc-400">Forma de Pagamento</span>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/5 border border-white/10 text-white">
-                    <selectedPm.icon className={`w-3.5 h-3.5 ${selectedPm.color}`} />
-                    <span>{selectedPm.label}</span>
-                  </span>
-                </div>
-
-                {/* Conta / Cartão */}
-                <div className="flex justify-between items-center">
-                  <span className="text-zinc-400">Conta / Cartão</span>
-                  <span className="text-white font-medium">
-                    {selectedAccount}
-                  </span>
-                </div>
-
-                {/* Tipo de Conta */}
-                <div className="flex justify-between items-center">
-                  <span className="text-zinc-400">Tipo de Conta</span>
-                  <span className="text-zinc-300 font-medium">
-                    {selectedAccountType}
-                  </span>
-                </div>
-
-                {/* Categoria */}
-                <div className="flex justify-between items-center">
-                  <span className="text-zinc-400">Categoria</span>
-                  <span className="text-white font-medium flex items-center gap-1.5">
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: selectedTx.categoryColor || "#ccff00" }}
-                    />
-                    {selectedTx.categoryName || "Geral"}
-                  </span>
-                </div>
-
-                {/* Recorrência se for fixa */}
-                {selectedTx.isFixed && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-zinc-400">Recorrência</span>
-                    <span className="text-blue-400 font-medium">Transação Fixa</span>
-                  </div>
-                )}
-
-                {/* Status */}
-                <div className="flex justify-between items-center pt-1 border-t border-white/[0.04]">
-                  <span className="text-zinc-400">Status</span>
-                  <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                    <Check className="w-3.5 h-3.5" /> Concluído
-                  </span>
-                </div>
-              </div>
-
+          <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col overflow-y-auto px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(6rem,env(safe-area-inset-bottom))] text-white animate-in slide-in-from-right duration-200 select-none sm:rounded-[44px] w-full h-full min-h-screen sm:min-h-0">
+            {/* Top Bar: Voltar (<) na esquerda • Lixeira + Editar transação na direita */}
+            <div className="flex items-center justify-between w-full pt-1 pb-3">
               <button
                 type="button"
                 onClick={() => setSelectedTx(null)}
-                className="w-full py-3 rounded-full bg-zinc-800 text-white font-bold text-sm active:scale-95 transition cursor-pointer hover:bg-zinc-700"
+                aria-label="Voltar"
+                className="w-11 h-11 rounded-full bg-[#1b1c22] border border-white/5 flex items-center justify-center text-white active:scale-95 transition cursor-pointer shadow-md hover:bg-[#25252c]"
               >
-                Fechar
+                <ChevronLeft className="w-5 h-5 stroke-[2.4]" />
               </button>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmDeleteOpen(true)}
+                  aria-label="Excluir transação"
+                  title="Excluir transação"
+                  className="w-11 h-11 rounded-full bg-[#1b1c22] border border-white/5 flex items-center justify-center text-zinc-300 hover:text-rose-400 active:scale-95 transition cursor-pointer shadow-md hover:bg-[#25252c]"
+                >
+                  <Trash2 className="w-4.5 h-4.5 stroke-[2]" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleStartEdit}
+                  className="px-4.5 py-2.5 rounded-full bg-[#27262c] hover:bg-[#34333b] border border-white/5 text-xs sm:text-sm font-semibold text-white active:scale-95 transition cursor-pointer shadow-md"
+                >
+                  Editar transação
+                </button>
+              </div>
             </div>
+
+            {/* Ícone Grande com Badge da Conta/Banco */}
+            <div className="relative inline-block mt-4 self-start">
+              <TransactionIcon
+                title={selectedTx.title}
+                categoryIcon={selectedTx.categoryIcon}
+                type={selectedTx.type}
+                size={64}
+              />
+              <AccountBadge tx={selectedTx} customClasses="w-7 h-7 -bottom-1 -right-1" />
+            </div>
+
+            {/* Título da Transação */}
+            <h2 className="text-xl sm:text-2xl font-bold text-white mt-4 tracking-tight leading-snug">
+              {selectedTx.title}
+            </h2>
+
+            {/* Valor Grande */}
+            <div
+              className={`text-3xl sm:text-[34px] font-extrabold text-white mt-1 tracking-tight font-sans ${
+                isPrivacyHidden ? "balance-blur" : ""
+              }`}
+            >
+              {selectedTx.type === "income" ? "+ " : ""}R$ {formatCurrency(selectedTx.amount)}
+            </div>
+
+            {/* Data por Extenso (ex: Domingo, 8 de novembro de 2026) */}
+            <p className="text-sm text-zinc-400 mt-1 capitalize leading-relaxed">
+              {formatLongPortugueseDate(selectedTx.transactionDate)}
+            </p>
+
+            {/* Lista de Detalhes da Atividade */}
+            <div className="flex flex-col gap-5 mt-8">
+              {/* Categoria */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-11 h-11 rounded-full bg-[#1b1c22] border border-white/5 flex items-center justify-center shrink-0 shadow-inner">
+                    {renderCategoryItemIcon(selectedTx.categoryIcon || "cart", selectedTx.categoryColor || "#f97316", "w-5 h-5")}
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs text-zinc-400">Categoria</span>
+                    <span className="text-sm font-semibold text-white truncate">
+                      {selectedTx.categoryName || "Geral"}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditingSelectedTxCategory(true);
+                    setSearchCatQuery("");
+                    setIsCategoryPickerOpen(true);
+                  }}
+                  className="px-4 py-1.5 rounded-full bg-[#27262c] hover:bg-[#34333b] border border-white/5 text-xs font-semibold text-white active:scale-95 transition cursor-pointer shrink-0"
+                >
+                  Editar
+                </button>
+              </div>
+
+              {/* Conta */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-11 h-11 rounded-full bg-[#1b1c22] border border-white/5 flex items-center justify-center shrink-0 overflow-hidden relative shadow-inner">
+                    <AccountBadge tx={selectedTx} customClasses="w-7 h-7 static" />
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs text-zinc-400">Conta</span>
+                    <span className="text-sm font-semibold text-white truncate">
+                      {selectedAccount}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Forma de pagamento */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-11 h-11 rounded-full bg-[#1b1c22] border border-white/5 flex items-center justify-center text-zinc-300 shrink-0 shadow-inner">
+                    <selectedPm.icon className={`w-5 h-5 ${selectedPm.color}`} />
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs text-zinc-400">Forma de pagamento</span>
+                    <span className="text-sm font-semibold text-white truncate">
+                      {selectedAccount}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Parcelamento (se houver) */}
+              {hasInstallments && (
+                <div className="flex flex-col gap-3 pt-3 border-t border-white/5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="w-11 h-11 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0 shadow-inner">
+                        <Layers className="w-5 h-5" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs text-zinc-400">Parcelamento</span>
+                        <span className="text-sm font-semibold text-white truncate">
+                          Parcela {currentInst} de {totalInst}x • Total R$ {formatCurrency(totalValue)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cronograma de Parcelas */}
+                  {scheduleList.length > 0 && (
+                    <div className="p-3 rounded-2xl bg-black/40 border border-white/5 flex flex-col gap-2">
+                      <span className="text-[11px] font-semibold text-zinc-400">Próximos vencimentos:</span>
+                      <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto no-scrollbar">
+                        {scheduleList.map((item) => {
+                          const isCurrent = item.number === currentInst;
+                          return (
+                            <div
+                              key={item.number}
+                              className={`flex items-center justify-between py-1.5 px-2.5 rounded-xl text-xs ${
+                                isCurrent
+                                  ? "bg-amber-400/15 border border-amber-400/30 text-amber-200 font-semibold"
+                                  : "bg-white/[0.02] border border-white/5 text-zinc-400"
+                              }`}
+                            >
+                              <span>Parcela {item.number}/{item.total}</span>
+                              <span className="font-mono">{item.formattedDate}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Dividir Gasto (se houver) */}
+              {selectedTx.splits && selectedTx.splits.length > 0 && (
+                <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-11 h-11 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs text-zinc-400">Dividir gasto</span>
+                      <span className="text-sm font-semibold text-white truncate">
+                        Dividido com {selectedTx.splits.length} pessoa{selectedTx.splits.length > 1 ? "s" : ""}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Marcar como recorrente */}
+              <div className="flex items-center justify-between pt-4 mt-1 border-t border-white/5">
+                <div className="flex items-center gap-3">
+                  <History className="w-5 h-5 text-zinc-400 stroke-[2]" />
+                  <span className="text-sm font-medium text-white">Marcar como recorrente</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleRecurring}
+                  aria-label="Marcar como recorrente"
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors cursor-pointer ${
+                    selectedTx.isFixed ? "bg-white" : "bg-[#27262c]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full transition-transform ${
+                      selectedTx.isFixed ? "translate-x-6 bg-black" : "translate-x-1 bg-zinc-400"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Ocultar transação do extrato */}
+              <div className="flex items-center justify-between pt-4 mt-1 border-t border-white/5">
+                <div className="flex items-center gap-3">
+                  {selectedTx.isHidden ? (
+                    <EyeOff className="w-5 h-5 text-zinc-400 stroke-[2]" />
+                  ) : (
+                    <Eye className="w-5 h-5 text-zinc-400 stroke-[2]" />
+                  )}
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-white">Ocultar transação</span>
+                    <span className="text-[11px] text-zinc-400">Não exibir no extrato por padrão</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleHideSelectedTx}
+                  aria-label="Ocultar transação do extrato"
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors cursor-pointer ${
+                    selectedTx.isHidden ? "bg-white" : "bg-[#27262c]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full transition-transform ${
+                      selectedTx.isHidden ? "translate-x-6 bg-black" : "translate-x-1 bg-zinc-400"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal de Confirmação de Exclusão */}
+            {isConfirmDeleteOpen && (
+              <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+                <div className="w-full max-w-sm bg-[#18181c] border border-white/10 rounded-3xl p-6 flex flex-col gap-4 text-white shadow-2xl">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                      <Trash2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-base font-bold text-white">Excluir atividade?</h4>
+                      <p className="text-xs text-zinc-400 mt-0.5">Esta ação não poderá ser desfeita.</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-zinc-300 bg-black/40 p-3 rounded-xl border border-white/5">
+                    &ldquo;{selectedTx.title}&rdquo; no valor de R$ {formatCurrency(selectedTx.amount)}
+                  </p>
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmDeleteOpen(false)}
+                      className="flex-1 py-2.5 rounded-full bg-white/10 hover:bg-white/15 text-sm font-semibold text-zinc-300 hover:text-white transition cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteTx}
+                      className="flex-1 py-2.5 rounded-full bg-rose-600 hover:bg-rose-500 text-sm font-bold text-white transition cursor-pointer shadow-lg shadow-rose-600/30"
+                    >
+                      Excluir
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Editar Transação */}
+            {isEditTxModalOpen && (
+              <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
+                <div className="w-full max-w-full sm:max-w-[420px] bg-[#141418] border border-white/10 rounded-t-[32px] sm:rounded-[32px] p-6 text-white shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom">
+                  <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                    <h3 className="text-base font-bold text-white">Editar Transação</h3>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditTxModalOpen(false)}
+                      className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-zinc-400 hover:text-white cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <label className="text-xs text-zinc-400 font-medium mb-1 block">Título da compra</label>
+                      <input
+                        type="text"
+                        value={editTxTitle}
+                        onChange={(e) => setEditTxTitle(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white focus:outline-none focus:border-white/25"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-zinc-400 font-medium mb-1 block">Valor (R$)</label>
+                      <input
+                        type="text"
+                        value={(editTxCentsAmount / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/\D/g, "");
+                          setEditTxCentsAmount(parseInt(digitsOnly, 10) || 0);
+                        }}
+                        className="w-full px-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white focus:outline-none focus:border-white/25 font-mono"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-zinc-400 font-medium mb-1 block">Data</label>
+                        <input
+                          type="date"
+                          value={editTxDate}
+                          onChange={(e) => setEditTxDate(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs text-white focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-zinc-400 font-medium mb-1 block">Horário</label>
+                        <input
+                          type="time"
+                          value={editTxTime}
+                          onChange={(e) => setEditTxTime(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs text-white focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditTxModalOpen(false)}
+                      className="flex-1 py-3 rounded-full bg-white/10 hover:bg-white/15 text-sm font-semibold text-zinc-300 transition cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const newAmount = editTxCentsAmount > 0 ? editTxCentsAmount / 100 : selectedTx.amount;
+                        const newTitle = editTxTitle.trim() || selectedTx.title;
+                        const newDate = `${editTxDate}T${editTxTime}:00`;
+                        const updatedTx: ExtratoTransaction = {
+                          ...selectedTx,
+                          title: newTitle,
+                          amount: newAmount,
+                          transactionDate: newDate,
+                          paymentMethod: editTxPaymentMethod,
+                        };
+                        setSelectedTx(updatedTx);
+                        setTransactions((prev) =>
+                          prev.map((t) => (t.id === selectedTx.id ? updatedTx : t))
+                        );
+                        setIsEditTxModalOpen(false);
+                        await updateTransactionAction(selectedTx.id, {
+                          description: newTitle,
+                          amount: newAmount,
+                          paymentMethod: editTxPaymentMethod,
+                        });
+                      }}
+                      className="flex-1 py-3 rounded-full bg-white text-black text-sm font-bold transition cursor-pointer hover:bg-zinc-200"
+                    >
+                      Salvar alterações
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}

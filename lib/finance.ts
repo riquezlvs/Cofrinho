@@ -637,6 +637,10 @@ export async function getExtratoData(): Promise<ExtratoData> {
         dateGroup: t.transaction_date,
         status: t.status || "paid",
         isFixed: t.is_fixed || false,
+        accountId: t.account_id || t.account?.id,
+        creditCardId: t.credit_card_id || t.credit_card?.id,
+        origin: t.tags?.includes("open_finance") || t.description?.toLowerCase().includes("open finance") ? "open_finance" : "manual",
+        isHidden: t.tags?.includes("hidden") || false,
       });
       continue;
     }
@@ -709,6 +713,10 @@ export async function getExtratoData(): Promise<ExtratoData> {
           dateGroup: instDate,
           status: isPaid ? "paid" : "pending",
           isFixed: ep.is_fixed || false,
+          accountId: ep.account_id || ep.account?.id,
+          creditCardId: ep.credit_card_id || ep.credit_card?.id,
+          origin: ep.tags?.includes("open_finance") ? "open_finance" : "manual",
+          isHidden: ep.tags?.includes("hidden") || false,
         });
       }
     } else {
@@ -745,6 +753,10 @@ export async function getExtratoData(): Promise<ExtratoData> {
           dateGroup: instDate,
           status: isPaid ? "paid" : "pending",
           isFixed: t.is_fixed || false,
+          accountId: t.account_id || t.account?.id,
+          creditCardId: t.credit_card_id || t.credit_card?.id,
+          origin: t.tags?.includes("open_finance") ? "open_finance" : "manual",
+          isHidden: t.tags?.includes("hidden") || false,
         });
       }
     }
@@ -1081,6 +1093,51 @@ export async function createTransaction(payload: {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro desconhecido";
     console.error("Erro interno ao criar transação:", err);
+    return { success: false, error: message };
+  }
+}
+
+export async function deleteTransaction(transactionId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+    try {
+      await supabase.from("splits").delete().eq("transaction_id", transactionId);
+    } catch {
+      // Ignora erro de split se tabela não existir
+    }
+    const { error } = await supabase.from("transactions").delete().eq("id", transactionId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    return { success: false, error: message };
+  }
+}
+
+export async function updateTransaction(
+  transactionId: string,
+  updates: {
+    description?: string;
+    amount?: number;
+    categoryId?: string;
+    isFixed?: boolean;
+    paymentMethod?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+    const payload: Record<string, unknown> = {};
+    if (updates.description !== undefined) payload.description = updates.description;
+    if (updates.amount !== undefined) payload.amount = updates.amount;
+    if (updates.categoryId !== undefined) payload.category_id = updates.categoryId;
+    if (updates.isFixed !== undefined) payload.is_fixed = updates.isFixed;
+    if (updates.paymentMethod !== undefined) payload.payment_method = updates.paymentMethod;
+
+    const { error } = await supabase.from("transactions").update(payload).eq("id", transactionId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
     return { success: false, error: message };
   }
 }
