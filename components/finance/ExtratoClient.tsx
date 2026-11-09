@@ -673,7 +673,7 @@ export function ExtratoClient({
   const [editTxTime, setEditTxTime] = useState("");
   const [editTxPaymentMethod, setEditTxPaymentMethod] = useState<string>("credit");
 
-  // Estado unificado de overlays para ocultar o navbar flutuante e evitar sobreposição com botões
+  // Estado unificado de overlays para ocultar o navbar flutuante e travar a página de baixo
   const isAnyOverlayOpen = Boolean(
     isNewTxModalOpen ||
     isEditTxModalOpen ||
@@ -685,6 +685,17 @@ export function ExtratoClient({
 
   useEffect(() => {
     onOverlayChange?.(isAnyOverlayOpen);
+    if (isAnyOverlayOpen) {
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+    };
   }, [isAnyOverlayOpen, onOverlayChange]);
 
   // Filtros avançados adaptados às imagens do anexo
@@ -1859,16 +1870,16 @@ export function ExtratoClient({
 
       {/* TELA DE NOVA TRANSAÇÃO */}
       {isNewTxModalOpen && (
-        <div className="fixed inset-0 sm:absolute sm:inset-0 z-[70] bg-[#09090b] flex flex-col h-[100dvh] sm:h-full max-h-[100dvh] text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden">
+        <div className="fixed inset-0 z-[75] bg-black flex flex-col h-[100dvh] max-h-[100dvh] text-white animate-in slide-in-from-bottom duration-300 overflow-hidden select-none">
           {/* Header fixo no topo */}
-          <div className="shrink-0 px-5 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/[0.08] relative flex items-center justify-center bg-[#09090b] z-10">
+          <div className="shrink-0 px-5 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/[0.08] relative flex items-center justify-center bg-black z-10">
             <h2 className="text-base sm:text-[17px] font-bold text-white tracking-tight">
               Nova transação
             </h2>
             <button
               type="button"
               onClick={() => setIsNewTxModalOpen(false)}
-              className="absolute right-5 sm:right-6 w-9 h-9 rounded-full bg-[#27262c] hover:bg-[#34333b] flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition cursor-pointer"
+              className="absolute right-5 sm:right-6 w-9 h-9 rounded-full liquid-glass-btn flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -2547,14 +2558,14 @@ export function ExtratoClient({
           </div>
 
           {/* Botão de ação inferior SEMPRE visível na altura do celular (sem precisar rolar) */}
-          <div className="shrink-0 p-4 sm:p-5 pb-[max(1rem,env(safe-area-inset-bottom))] bg-[#09090b] border-t border-white/[0.08] z-10 shadow-[0_-8px_20px_rgba(0,0,0,0.6)]">
+          <div className="shrink-0 p-4 sm:p-5 pb-[max(1rem,env(safe-area-inset-bottom))] bg-black border-t border-white/[0.08] z-20 shadow-[0_-8px_20px_rgba(0,0,0,0.8)]">
             <button
               type="button"
               onClick={handleSaveTransaction}
               disabled={!canSubmitTransaction}
-              className={`w-full py-3.5 sm:py-4 rounded-full font-semibold text-base transition-all active:scale-[0.98] cursor-pointer shadow-lg flex items-center justify-center gap-2 ${
+              className={`w-full py-4 rounded-full font-bold text-base transition-all active:scale-[0.98] cursor-pointer shadow-xl flex items-center justify-center gap-2 ${
                 canSubmitTransaction
-                  ? "bg-[#d4d4d8] hover:bg-white text-black"
+                  ? "liquid-glass-btn-accent"
                   : "bg-[#27272a] text-zinc-500 cursor-not-allowed"
               }`}
             >
@@ -2572,7 +2583,7 @@ export function ExtratoClient({
 
       {/* TELA DE SELEÇÃO DE CATEGORIAS (Fiel à imagem em anexo) */}
       {isCategoryPickerOpen && (
-        <div className="fixed inset-0 sm:absolute sm:inset-0 z-[80] bg-[#09090b] flex flex-col p-5 sm:p-6 text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))]">
+        <div className="fixed inset-0 z-[95] bg-black flex flex-col p-5 sm:p-6 text-white animate-in slide-in-from-bottom duration-300 overflow-hidden pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] select-none">
           {/* Header com botão Fechar X circular na direita */}
           <div className="flex items-center justify-end pt-1 pb-3">
             <button
@@ -2582,7 +2593,7 @@ export function ExtratoClient({
                 setIsEditingSelectedTxCategory(false);
                 setIsCategoryPickerForFilter(false);
               }}
-              className="w-10 h-10 rounded-full bg-[#1c1c22] border border-white/5 hover:bg-[#25252c] flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition cursor-pointer"
+              className="w-10 h-10 rounded-full liquid-glass-btn flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition cursor-pointer"
               aria-label="Fechar"
             >
               <X className="w-5 h-5" />
@@ -2716,14 +2727,14 @@ export function ExtratoClient({
 
           {/* Footer quando aberto a partir do filtro: Concluir seleção */}
           {isCategoryPickerForFilter && (
-            <div className="shrink-0 pt-3 pb-1 border-t border-white/[0.06] bg-[#09090b]">
+            <div className="shrink-0 pt-3 pb-1 border-t border-white/[0.08] bg-black z-20">
               <button
                 type="button"
                 onClick={() => {
                   setIsCategoryPickerOpen(false);
                   setIsCategoryPickerForFilter(false);
                 }}
-                className="w-full py-3.5 rounded-full bg-white text-black font-bold text-sm sm:text-base hover:bg-zinc-200 active:scale-[0.98] transition shadow-lg cursor-pointer flex items-center justify-center gap-2"
+                className="w-full py-4 rounded-full liquid-glass-btn-accent font-black text-sm sm:text-base cursor-pointer shadow-xl flex items-center justify-center gap-2 active:scale-95 transition"
               >
                 Concluir {selectedCategoryNames.length > 0 ? `(${selectedCategoryNames.length})` : ""}
               </button>
@@ -2734,24 +2745,24 @@ export function ExtratoClient({
 
       {/* Modal / Tela de Filtros - Adaptado fielmente às imagens de referência */}
       {isFilterSheetOpen && (
-        <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col justify-between text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden w-full h-[100dvh] sm:h-full max-h-[100dvh] sm:max-h-full">
-          {/* Header com Título Filtros e botão circular X à direita */}
-          <div className="flex items-center justify-between px-5 sm:px-6 pt-[max(1.25rem,env(safe-area-inset-top))] pb-2 shrink-0">
+        <div className="fixed inset-0 z-[80] bg-black flex flex-col justify-between text-white animate-in slide-in-from-bottom duration-300 overflow-hidden w-full h-[100dvh] max-h-[100dvh] select-none">
+          {/* Header Fixo com Título Filtros e botão circular X à direita */}
+          <div className="flex items-center justify-between px-5 sm:px-6 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3 shrink-0 bg-black border-b border-white/[0.08] z-20">
             <h2 className="text-2xl sm:text-[28px] font-bold tracking-tight text-white">
               Filtros
             </h2>
             <button
               type="button"
               onClick={() => setIsFilterSheetOpen(false)}
-              className="w-9 h-9 rounded-full bg-[#27262c] hover:bg-[#34333b] flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition cursor-pointer"
+              className="w-10 h-10 rounded-full liquid-glass-btn flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition cursor-pointer"
               aria-label="Fechar filtros"
             >
-              <X className="w-4.5 h-4.5 stroke-[2.5]" />
+              <X className="w-5 h-5 stroke-[2.5]" />
             </button>
           </div>
 
-          {/* Conteúdo com Scroll vertical */}
-          <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-5 sm:px-6 py-2 space-y-6">
+          {/* Conteúdo com Scroll vertical até o final da página */}
+          <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-5 sm:px-6 py-4 space-y-6 pb-36">
             {/* 1. SEÇÃO: Período */}
             <div className="space-y-3">
               <h3 className="text-[15px] font-semibold text-white">
@@ -2995,19 +3006,19 @@ export function ExtratoClient({
             </div>
           </div>
 
-          {/* Footer Fixo: Mostrar resultados & Limpar tudo */}
-          <div className="shrink-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/98 to-transparent pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] px-5 sm:px-6 flex flex-col items-center gap-2 border-t border-white/[0.06]">
+          {/* Footer Fixo OPACO (sem vazar a tela de baixo) com botões arredondados Liquid Glass */}
+          <div className="shrink-0 bg-black pt-3.5 pb-[max(1.5rem,env(safe-area-inset-bottom))] px-5 sm:px-6 flex flex-col items-center gap-2.5 border-t border-white/[0.08] z-20 shadow-2xl">
             <button
               type="button"
               onClick={() => setIsFilterSheetOpen(false)}
-              className="w-full py-3.5 sm:py-4 rounded-full bg-white text-black font-bold text-sm sm:text-base hover:bg-zinc-200 active:scale-[0.98] transition shadow-lg cursor-pointer flex items-center justify-center gap-2"
+              className="w-full py-4 rounded-full liquid-glass-btn-accent font-black text-sm sm:text-base cursor-pointer flex items-center justify-center gap-2 shadow-xl active:scale-95 transition"
             >
               Mostrar resultados
             </button>
             <button
               type="button"
               onClick={clearAllFilters}
-              className="text-xs sm:text-sm font-medium text-zinc-400 hover:text-white active:scale-95 transition cursor-pointer py-1.5"
+              className="py-2 px-6 rounded-full liquid-glass-btn text-xs sm:text-sm font-bold text-zinc-400 hover:text-white cursor-pointer active:scale-95 transition"
             >
               Limpar tudo
             </button>
@@ -3091,14 +3102,14 @@ export function ExtratoClient({
         };
 
         return (
-          <div className="fixed inset-0 sm:absolute sm:inset-0 z-[70] bg-[#09090b] flex flex-col overflow-y-auto px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(4rem,env(safe-area-inset-bottom))] text-white animate-in slide-in-from-right duration-200 select-none sm:rounded-[44px] w-full h-[100dvh] max-h-[100dvh]">
-            {/* Top Bar: Voltar (<) na esquerda • Lixeira + Editar transação na direita */}
-            <div className="flex items-center justify-between w-full pt-1 pb-3">
+          <div className="fixed inset-0 z-[75] bg-black flex flex-col text-white animate-in slide-in-from-right duration-200 select-none w-full h-[100dvh] max-h-[100dvh] overflow-hidden">
+            {/* Top Bar Fixo no topo com botões arredondados e liquid glass */}
+            <div className="shrink-0 flex items-center justify-between w-full px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/[0.08] bg-black z-20">
               <button
                 type="button"
                 onClick={() => setSelectedTx(null)}
                 aria-label="Voltar"
-                className="w-11 h-11 rounded-full bg-[#1b1c22] border border-white/5 flex items-center justify-center text-white active:scale-95 transition cursor-pointer shadow-md hover:bg-[#25252c]"
+                className="w-11 h-11 rounded-full liquid-glass-btn flex items-center justify-center text-white active:scale-95 transition cursor-pointer shadow-md"
               >
                 <ChevronLeft className="w-5 h-5 stroke-[2.4]" />
               </button>
@@ -3109,7 +3120,7 @@ export function ExtratoClient({
                   onClick={() => setIsConfirmDeleteOpen(true)}
                   aria-label="Excluir transação"
                   title="Excluir transação"
-                  className="w-11 h-11 rounded-full bg-[#1b1c22] border border-white/5 flex items-center justify-center text-zinc-300 hover:text-rose-400 active:scale-95 transition cursor-pointer shadow-md hover:bg-[#25252c]"
+                  className="w-11 h-11 rounded-full liquid-glass-btn-danger flex items-center justify-center cursor-pointer shadow-md"
                 >
                   <Trash2 className="w-4.5 h-4.5 stroke-[2]" />
                 </button>
@@ -3117,15 +3128,17 @@ export function ExtratoClient({
                 <button
                   type="button"
                   onClick={handleStartEdit}
-                  className="px-4.5 py-2.5 rounded-full bg-[#27262c] hover:bg-[#34333b] border border-white/5 text-xs sm:text-sm font-semibold text-white active:scale-95 transition cursor-pointer shadow-md"
+                  className="px-5 py-2.5 rounded-full liquid-glass-btn text-xs sm:text-sm font-bold text-white active:scale-95 transition cursor-pointer shadow-md"
                 >
                   Editar transação
                 </button>
               </div>
             </div>
 
-            {/* Ícone Grande com Badge da Conta/Banco */}
-            <div className="relative inline-block mt-4 self-start">
+            {/* Conteúdo com scroll independente até o final da página */}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-6 no-scrollbar pb-36">
+              {/* Ícone Grande com Badge da Conta/Banco */}
+              <div className="relative inline-block mt-2 self-start">
               <TransactionIcon
                 title={selectedTx.title}
                 categoryIcon={selectedTx.categoryIcon}
@@ -3324,35 +3337,36 @@ export function ExtratoClient({
                 </button>
               </div>
             </div>
+          </div>
 
             {/* Modal de Confirmação de Exclusão */}
             {isConfirmDeleteOpen && (
-              <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-                <div className="w-full max-w-sm bg-[#18181c] border border-white/10 rounded-3xl p-6 flex flex-col gap-4 text-white shadow-2xl">
+              <div className="fixed inset-0 z-[95] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+                <div className="w-full max-w-sm bg-[#141418] border border-rose-500/30 rounded-[32px] p-6 flex flex-col gap-4 text-white shadow-2xl">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
-                      <Trash2 className="w-5 h-5" />
+                    <div className="w-12 h-12 rounded-full bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0 shadow-md">
+                      <Trash2 className="w-6 h-6 stroke-[2]" />
                     </div>
                     <div>
                       <h4 className="text-base font-bold text-white">Excluir atividade?</h4>
                       <p className="text-xs text-zinc-400 mt-0.5">Esta ação não poderá ser desfeita.</p>
                     </div>
                   </div>
-                  <p className="text-xs text-zinc-300 bg-black/40 p-3 rounded-xl border border-white/5">
+                  <p className="text-xs text-zinc-300 bg-black/60 p-3.5 rounded-2xl border border-white/5">
                     &ldquo;{selectedTx.title}&rdquo; no valor de R$ {formatCurrency(selectedTx.amount)}
                   </p>
-                  <div className="flex items-center gap-2 pt-2">
+                  <div className="flex items-center gap-2.5 pt-2">
                     <button
                       type="button"
                       onClick={() => setIsConfirmDeleteOpen(false)}
-                      className="flex-1 py-2.5 rounded-full bg-white/10 hover:bg-white/15 text-sm font-semibold text-zinc-300 hover:text-white transition cursor-pointer"
+                      className="flex-1 py-3 rounded-full liquid-glass-btn text-sm font-bold text-zinc-300 hover:text-white transition cursor-pointer"
                     >
                       Cancelar
                     </button>
                     <button
                       type="button"
                       onClick={handleDeleteTx}
-                      className="flex-1 py-2.5 rounded-full bg-rose-600 hover:bg-rose-500 text-sm font-bold text-white transition cursor-pointer shadow-lg shadow-rose-600/30"
+                      className="flex-1 py-3 rounded-full liquid-glass-btn-danger text-sm font-bold transition cursor-pointer shadow-lg"
                     >
                       Excluir
                     </button>
@@ -3361,36 +3375,39 @@ export function ExtratoClient({
               </div>
             )}
 
-            {/* Modal: Editar Transação */}
+            {/* Tela Completa 100% OPACA: Editar Transação (Não vaza a tela de baixo e permite rolar até o fim) */}
             {isEditTxModalOpen && (
-              <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
-                <div className="w-full max-w-full sm:max-w-[420px] max-h-[85dvh] sm:max-h-[80vh] bg-[#141418] border border-white/10 rounded-t-[32px] sm:rounded-[32px] p-5 sm:p-6 text-white shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom">
-                  {/* Header fixo */}
-                  <div className="shrink-0 flex items-center justify-between pb-3 border-b border-white/10">
-                    <h3 className="text-base font-bold text-white">Editar Transação</h3>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditTxModalOpen(false)}
-                      className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-zinc-400 hover:text-white cursor-pointer"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+              <div className="fixed inset-0 z-[90] bg-black flex flex-col text-white animate-in slide-in-from-bottom duration-200 select-none w-full h-[100dvh] max-h-[100dvh] overflow-hidden">
+                {/* Header Fixo */}
+                <div className="shrink-0 flex items-center justify-between w-full px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/[0.08] bg-black z-20">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditTxModalOpen(false)}
+                    aria-label="Voltar"
+                    className="w-11 h-11 rounded-full liquid-glass-btn flex items-center justify-center text-white active:scale-95 transition cursor-pointer shadow-md"
+                  >
+                    <ChevronLeft className="w-5 h-5 stroke-[2.4]" />
+                  </button>
+                  <h3 className="text-base sm:text-lg font-black text-white">Editar Transação</h3>
+                  <div className="w-11 h-11" />
+                </div>
+
+                {/* Formulário com Scroll independente até o fim */}
+                <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-4 no-scrollbar pb-36">
+                  <div>
+                    <label className="text-xs text-zinc-300 font-bold mb-1.5 block">Título da compra</label>
+                    <input
+                      type="text"
+                      value={editTxTitle}
+                      onChange={(e) => setEditTxTitle(e.target.value)}
+                      className="w-full px-5 py-3.5 rounded-full liquid-glass-input text-sm text-white focus:outline-none focus:border-lime-400"
+                    />
                   </div>
 
-                  {/* Formulário com scroll interno se necessário */}
-                  <div className="flex-1 overflow-y-auto py-3.5 flex flex-col gap-3.5 no-scrollbar">
-                    <div>
-                      <label className="text-xs text-zinc-400 font-medium mb-1 block">Título da compra</label>
-                      <input
-                        type="text"
-                        value={editTxTitle}
-                        onChange={(e) => setEditTxTitle(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white focus:outline-none focus:border-white/25"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs text-zinc-400 font-medium mb-1 block">Valor (R$)</label>
+                  <div>
+                    <label className="text-xs text-zinc-300 font-bold mb-1.5 block">Valor (R$)</label>
+                    <div className="relative">
+                      <span className="absolute left-5 top-3.5 text-sm text-zinc-400 font-bold">R$</span>
                       <input
                         type="text"
                         value={(editTxCentsAmount / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
@@ -3398,70 +3415,101 @@ export function ExtratoClient({
                           const digitsOnly = e.target.value.replace(/\D/g, "");
                           setEditTxCentsAmount(parseInt(digitsOnly, 10) || 0);
                         }}
-                        className="w-full px-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white focus:outline-none focus:border-white/25 font-mono"
+                        className="w-full pl-12 pr-5 py-3.5 rounded-full liquid-glass-input text-base font-bold text-white focus:outline-none focus:border-lime-400 font-mono"
                       />
                     </div>
+                  </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs text-zinc-400 font-medium mb-1 block">Data</label>
-                        <input
-                          type="date"
-                          value={editTxDate}
-                          onChange={(e) => setEditTxDate(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs text-white focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-zinc-400 font-medium mb-1 block">Horário</label>
-                        <input
-                          type="time"
-                          value={editTxTime}
-                          onChange={(e) => setEditTxTime(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs text-white focus:outline-none"
-                        />
-                      </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-zinc-300 font-bold mb-1.5 block">Data</label>
+                      <input
+                        type="date"
+                        value={editTxDate}
+                        onChange={(e) => setEditTxDate(e.target.value)}
+                        className="w-full px-4 py-3 rounded-full liquid-glass-input text-xs sm:text-sm text-white focus:outline-none focus:border-lime-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-zinc-300 font-bold mb-1.5 block">Horário</label>
+                      <input
+                        type="time"
+                        value={editTxTime}
+                        onChange={(e) => setEditTxTime(e.target.value)}
+                        className="w-full px-4 py-3 rounded-full liquid-glass-input text-xs sm:text-sm text-white focus:outline-none focus:border-lime-400"
+                      />
                     </div>
                   </div>
 
-                  {/* Botões de Ação Fixos no rodapé */}
-                  <div className="shrink-0 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-white/10 flex items-center gap-2 bg-[#141418]">
-                    <button
-                      type="button"
-                      onClick={() => setIsEditTxModalOpen(false)}
-                      className="flex-1 py-3 rounded-full bg-white/10 hover:bg-white/15 text-sm font-semibold text-zinc-300 transition cursor-pointer"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const newAmount = editTxCentsAmount > 0 ? editTxCentsAmount / 100 : selectedTx.amount;
-                        const newTitle = editTxTitle.trim() || selectedTx.title;
-                        const newDate = `${editTxDate}T${editTxTime}:00`;
-                        const updatedTx: ExtratoTransaction = {
-                          ...selectedTx,
-                          title: newTitle,
-                          amount: newAmount,
-                          transactionDate: newDate,
-                          paymentMethod: editTxPaymentMethod,
-                        };
-                        setSelectedTx(updatedTx);
-                        setTransactions((prev) =>
-                          prev.map((t) => (t.id === selectedTx.id ? updatedTx : t))
+                  {/* Forma de Pagamento */}
+                  <div className="pt-2">
+                    <label className="text-xs text-zinc-300 font-bold mb-2 block">Forma de Pagamento</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: "credit", label: "Cartão de Crédito" },
+                        { id: "debit", label: "Cartão de Débito" },
+                        { id: "pix", label: "Pix" },
+                        { id: "vr", label: "Vale Refeição (VR)" },
+                        { id: "va", label: "Vale Alimentação (VA)" },
+                        { id: "cash", label: "Dinheiro em Espécie" },
+                      ].map((pm) => {
+                        const isSelected = editTxPaymentMethod === pm.id;
+                        return (
+                          <button
+                            key={pm.id}
+                            type="button"
+                            onClick={() => setEditTxPaymentMethod(pm.id)}
+                            className={`p-3 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+                              isSelected
+                                ? "bg-white text-black shadow-lg"
+                                : "liquid-glass-btn text-zinc-300 hover:text-white"
+                            }`}
+                          >
+                            <span>{pm.label}</span>
+                          </button>
                         );
-                        setIsEditTxModalOpen(false);
-                        await updateTransactionAction(selectedTx.id, {
-                          description: newTitle,
-                          amount: newAmount,
-                          paymentMethod: editTxPaymentMethod,
-                        });
-                      }}
-                      className="flex-1 py-3 rounded-full bg-white text-black text-sm font-bold transition cursor-pointer hover:bg-zinc-200"
-                    >
-                      Salvar alterações
-                    </button>
+                      })}
+                    </div>
                   </div>
+                </div>
+
+                {/* Footer Fixo OPACO com botões arredondados Liquid Glass */}
+                <div className="shrink-0 bg-black border-t border-white/[0.08] px-5 py-3.5 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex items-center gap-3 z-30 shadow-2xl">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditTxModalOpen(false)}
+                    className="flex-1 py-3.5 rounded-full liquid-glass-btn font-bold text-sm cursor-pointer active:scale-95 transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const newAmount = editTxCentsAmount > 0 ? editTxCentsAmount / 100 : selectedTx.amount;
+                      const newTitle = editTxTitle.trim() || selectedTx.title;
+                      const newDate = `${editTxDate}T${editTxTime}:00`;
+                      const updatedTx: ExtratoTransaction = {
+                        ...selectedTx,
+                        title: newTitle,
+                        amount: newAmount,
+                        transactionDate: newDate,
+                        paymentMethod: editTxPaymentMethod,
+                      };
+                      setSelectedTx(updatedTx);
+                      setTransactions((prev) =>
+                        prev.map((t) => (t.id === selectedTx.id ? updatedTx : t))
+                      );
+                      setIsEditTxModalOpen(false);
+                      await updateTransactionAction(selectedTx.id, {
+                        description: newTitle,
+                        amount: newAmount,
+                        paymentMethod: editTxPaymentMethod,
+                      });
+                    }}
+                    className="flex-1 py-3.5 rounded-full liquid-glass-btn-accent font-black text-sm cursor-pointer shadow-xl active:scale-95 transition flex items-center justify-center gap-2"
+                  >
+                    Salvar alterações
+                  </button>
                 </div>
               </div>
             )}

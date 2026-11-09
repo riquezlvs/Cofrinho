@@ -173,19 +173,26 @@ export async function getDashboardData(): Promise<DashboardData> {
       limit,
       percentage,
       closingDays,
+      closingDay: c.closing_day,
       dueDay: c.due_day,
       color: c.color,
+      isDefault: Boolean(c.is_default),
     };
   });
 
   const defaultCard: CreditCardSummary =
     creditCards.find((c) => rawCards.find((rc) => rc.id === c.id)?.is_default) ||
     creditCards[0] || {
+      id: "santander",
       cardName: "Santander",
       spent: 0,
       limit: 6000.0,
       percentage: 0,
       closingDays: 14,
+      closingDay: 24,
+      dueDay: 1,
+      isDefault: true,
+      color: "#ec0000",
     };
 
   const totalInvoices = creditCards.reduce((sum, c) => sum + c.spent, 0);
@@ -660,31 +667,50 @@ export async function getExtratoData(): Promise<ExtratoData> {
         other.description.replace(/\(Parcela \d+\/\d+\)/i, "").trim() === groupKey
     );
 
-    // Calcula a data base da primeira parcela (Parcela 1)
-    const baseDate = addMonths(t.transaction_date, -(currentInst - 1));
+    const today = new Date().toISOString().split("T")[0];
 
-    // Monta o cronograma completo de datas de parcelamento
-    const schedule: InstallmentScheduleItem[] = [];
-    for (let i = 1; i <= totalInst; i++) {
-      const iDate = addMonths(baseDate, i - 1);
-      const parts = iDate.split("-");
-      const formatted = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : iDate;
-      schedule.push({
-        number: i,
-        total: totalInst,
-        date: iDate,
-        formattedDate: formatted,
-        amount: parcelAmount,
-        status: i < currentInst ? "paid" : i === currentInst ? "current" : "pending",
-      });
-    }
+    // Determina a data correta da parcela:
+    // Se houver competence_date (YYYY-MM-01) e transaction_date (YYYY-MM-DD),
+    // a parcela é alocada no ano/mês da respectiva fatura, mantendo o dia da compra original.
+    const computeParcelDate = (txItem: typeof t, instIndex: number, baseDateStr: string) => {
+      if (txItem.competence_date && txItem.transaction_date) {
+        const [cYear, cMonth] = txItem.competence_date.split("-");
+        const [, , pDay] = txItem.transaction_date.split("-");
+        const dayNum = parseInt(pDay, 10) || 1;
+        const daysInTargetMonth = new Date(parseInt(cYear, 10), parseInt(cMonth, 10), 0).getDate();
+        const finalDay = Math.min(dayNum, daysInTargetMonth);
+        return `${cYear}-${cMonth}-${String(finalDay).padStart(2, "0")}`;
+      }
+      return addMonths(baseDateStr, instIndex - 1);
+    };
 
     if (existingParcelsInDb.length > 1) {
-      const today = new Date().toISOString().split("T")[0];
-      for (const ep of existingParcelsInDb) {
+      const sortedParcels = [...existingParcelsInDb].sort(
+        (a, b) => (a.installment_number || 1) - (b.installment_number || 1)
+      );
+
+      const firstParcel = sortedParcels[0];
+      const baseDate = firstParcel?.transaction_date || t.transaction_date;
+
+      const schedule: InstallmentScheduleItem[] = sortedParcels.map((ep) => {
         const instNum = ep.installment_number || 1;
-        // Garante que cada parcela fique no seu respectivo mês consecutivo
-        const instDate = addMonths(baseDate, instNum - 1);
+        const iDate = computeParcelDate(ep, instNum, baseDate);
+        const parts = iDate.split("-");
+        const formatted = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : iDate;
+        const isPaid = iDate <= today || ep.status === "paid";
+        return {
+          number: instNum,
+          total: totalInst,
+          date: iDate,
+          formattedDate: formatted,
+          amount: Number(ep.amount || 0),
+          status: isPaid ? "paid" : "pending",
+        };
+      });
+
+      for (const ep of sortedParcels) {
+        const instNum = ep.installment_number || 1;
+        const instDate = computeParcelDate(ep, instNum, baseDate);
         const parts = instDate.split("-");
         const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}` : instDate;
         const cleanTitle = ep.description.replace(/\(Parcela \d+\/\d+\)/i, "").trim();
@@ -721,8 +747,23 @@ export async function getExtratoData(): Promise<ExtratoData> {
       }
     } else {
       // Expande todas as parcelas com suas respectivas datas de parcelamento no extrato
+      const baseDate = t.transaction_date;
       const cleanTitle = t.description.replace(/\(Parcela \d+\/\d+\)/i, "").trim();
-      const today = new Date().toISOString().split("T")[0];
+
+      const schedule: InstallmentScheduleItem[] = [];
+      for (let i = 1; i <= totalInst; i++) {
+        const iDate = addMonths(baseDate, i - 1);
+        const parts = iDate.split("-");
+        const formatted = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : iDate;
+        schedule.push({
+          number: i,
+          total: totalInst,
+          date: iDate,
+          formattedDate: formatted,
+          amount: parcelAmount,
+          status: iDate <= today ? "paid" : i === 1 ? "current" : "pending",
+        });
+      }
 
       for (let i = 1; i <= totalInst; i++) {
         const instDate = addMonths(baseDate, i - 1);
@@ -1138,6 +1179,161 @@ export async function updateTransaction(
     return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro desconhecido";
+    return { success: false, error: message };
+  }
+}
+
+export async function createCreditCard(payload: {
+  name: string;
+  limit: number;
+  closingDay: number;
+  dueDay: number;
+  color?: string;
+  isDefault?: boolean;
+}): Promise<{ success: boolean; data?: CreditCardSummary; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+    const { data: usersData } = await supabase.auth.admin.listUsers();
+    const user = usersData?.users?.[0];
+    const userId = user?.id;
+
+    if (!userId) {
+      return { success: false, error: "Nenhum usuário encontrado." };
+    }
+
+    if (payload.isDefault) {
+      // Se for padrão, desmarca outros cartões
+      await supabase
+        .from("credit_cards")
+        .update({ is_default: false })
+        .eq("user_id", userId);
+    }
+
+    const { data, error } = await supabase
+      .from("credit_cards")
+      .insert({
+        user_id: userId,
+        name: payload.name.trim(),
+        credit_limit: payload.limit,
+        closing_day: payload.closingDay,
+        due_day: payload.dueDay,
+        color: payload.color || "#820ad1",
+        is_default: Boolean(payload.isDefault),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Erro ao criar cartão:", error);
+      return { success: false, error: error.message };
+    }
+
+    const now = new Date();
+    const currentDay = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    let closingDays = (data.closing_day || 24) - currentDay;
+    if (closingDays < 0) closingDays += daysInMonth;
+
+    const newCardSummary: CreditCardSummary = {
+      id: data.id,
+      cardName: data.name,
+      spent: 0,
+      limit: Number(data.credit_limit || 0),
+      percentage: 0,
+      closingDays,
+      closingDay: data.closing_day,
+      dueDay: data.due_day,
+      color: data.color,
+      isDefault: Boolean(data.is_default),
+    };
+
+    return { success: true, data: newCardSummary };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    console.error("Erro interno ao criar cartão:", err);
+    return { success: false, error: message };
+  }
+}
+
+export async function updateCreditCard(
+  cardId: string,
+  updates: {
+    name?: string;
+    limit?: number;
+    closingDay?: number;
+    dueDay?: number;
+    color?: string;
+    isDefault?: boolean;
+  }
+): Promise<{ success: boolean; data?: Partial<CreditCardSummary>; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+    const { data: usersData } = await supabase.auth.admin.listUsers();
+    const user = usersData?.users?.[0];
+    const userId = user?.id;
+
+    if (!userId) {
+      return { success: false, error: "Nenhum usuário encontrado." };
+    }
+
+    if (updates.isDefault) {
+      await supabase
+        .from("credit_cards")
+        .update({ is_default: false })
+        .eq("user_id", userId);
+    }
+
+    const payload: Record<string, unknown> = {};
+    if (updates.name !== undefined) payload.name = updates.name.trim();
+    if (updates.limit !== undefined) payload.credit_limit = updates.limit;
+    if (updates.closingDay !== undefined) payload.closing_day = updates.closingDay;
+    if (updates.dueDay !== undefined) payload.due_day = updates.dueDay;
+    if (updates.color !== undefined) payload.color = updates.color;
+    if (updates.isDefault !== undefined) payload.is_default = updates.isDefault;
+
+    const { data, error } = await supabase
+      .from("credit_cards")
+      .update(payload)
+      .eq("id", cardId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Erro ao atualizar cartão:", error);
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: true,
+      data: {
+        id: data.id,
+        cardName: data.name,
+        limit: Number(data.credit_limit || 0),
+        closingDay: data.closing_day,
+        dueDay: data.due_day,
+        color: data.color,
+        isDefault: Boolean(data.is_default),
+      },
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    console.error("Erro interno ao atualizar cartão:", err);
+    return { success: false, error: message };
+  }
+}
+
+export async function deleteCreditCard(cardId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+    const { error } = await supabase.from("credit_cards").delete().eq("id", cardId);
+    if (error) {
+      console.error("Erro ao deletar cartão:", error);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    console.error("Erro interno ao deletar cartão:", err);
     return { success: false, error: message };
   }
 }

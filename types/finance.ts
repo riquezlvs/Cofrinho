@@ -24,8 +24,10 @@ export interface CreditCardSummary {
   limit: number;
   percentage: number;
   closingDays: number;
+  closingDay?: number;
   dueDay?: number;
   color?: string;
+  isDefault?: boolean;
 }
 
 export interface SubscriptionSummary {

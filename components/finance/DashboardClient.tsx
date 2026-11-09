@@ -8,7 +8,9 @@ import { AccountsOverviewCard } from "@/components/finance/AccountsOverviewCard"
 import { MonthlySpendingCard } from "@/components/finance/MonthlySpendingCard";
 import { BentoDashboardGrid } from "@/components/finance/BentoDashboardGrid";
 import { FloatingCofrinhoDock } from "@/components/finance/FloatingCofrinhoDock";
-import { DashboardData } from "@/types/finance";
+import { CardsTabClient } from "@/components/finance/CardsTabClient";
+import { DashboardData, CreditCardSummary } from "@/types/finance";
+import { TrendingUp } from "lucide-react";
 
 export interface DashboardClientProps {
   initialData: DashboardData;
@@ -33,6 +35,7 @@ export function DashboardClient({
   const [internalPrivacy, setInternalPrivacy] = useState(false);
   const isPrivacyHidden = externalPrivacy !== undefined ? externalPrivacy : internalPrivacy;
   const [selectedSegment, setSelectedSegment] = useState<SegmentType>("contas");
+  const [cards, setCards] = useState<CreditCardSummary[]>(initialData.creditCards || []);
   const [isGreetingScrolledOut, setIsGreetingScrolledOut] = useState(false);
 
   const greetingRef = useRef<HTMLDivElement>(null);
@@ -40,16 +43,16 @@ export function DashboardClient({
 
   const userName = initialData.userName || "João";
 
+  const totalInvoices = cards.reduce((acc, c) => acc + (c.spent || 0), 0);
+  const activeDefaultCard =
+    cards.find((c) => c.isDefault) || cards[0] || initialData.creditCard;
+
   const handleTogglePrivacy = () => {
     if (externalTogglePrivacy) {
       externalTogglePrivacy();
     } else {
       setInternalPrivacy((prev) => !prev);
     }
-  };
-
-  const handleConnectBank = () => {
-    console.log("Conectar novos bancos ou instituições");
   };
 
   const handleAskCofrinho = () => {
@@ -158,66 +161,93 @@ export function DashboardClient({
         ref={scrollContainerRef}
         className="w-full flex-1 px-4 sm:px-5 pt-2 pb-44 z-10 flex flex-col gap-6"
       >
-        {/* Filtros de Segmento (Contas, Cartão, Investimentos) com altura e toque aumentados */}
+        {/* Filtros de Segmento (Contas, Cartões, Investimentos) com altura e toque aumentados */}
         <SegmentedFilterPills
           selectedSegment={selectedSegment}
           onSelectSegment={setSelectedSegment}
         />
 
-        {/* Saudação Personalizada - Elemento monitorado para a animação do header fixo */}
-        <div ref={greetingRef} className="pt-1">
-          <h1 className="text-3xl font-extrabold tracking-tight text-white">
-            Boa tarde, {userName}
-          </h1>
-        </div>
+        {/* ABA 1: CARTÕES - Onde aparece todas as informações de todos os cartões e pode adicionar/editar */}
+        {selectedSegment === "cartoes" || selectedSegment === "cartao" ? (
+          <CardsTabClient
+            cards={cards}
+            userName={userName}
+            isPrivacyHidden={isPrivacyHidden}
+            onCardsChange={(newCards) => setCards(newCards)}
+            onOpenExtratoWithCard={() => handleNavigateExtrato()}
+          />
+        ) : selectedSegment === "investimentos" ? (
+          /* ABA 2: INVESTIMENTOS (Placeholder Elegante) */
+          <div className="w-full rounded-[30px] liquid-glass p-8 text-center flex flex-col items-center justify-center gap-3 border border-white/10 shadow-2xl">
+            <div className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-lime-400">
+              <TrendingUp className="w-7 h-7 stroke-[2]" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-white">Investimentos & Metas</h3>
+              <p className="text-xs text-zinc-400 max-w-[260px] mx-auto">
+                Em breve: acompanhe rendimentos automáticos de cofrinhos, reservas de emergência e fundos.
+              </p>
+            </div>
+          </div>
+        ) : (
+          /* ABA 3: CONTAS (Visão Inicial Padrão) */
+          <>
+            {/* Saudação Personalizada - Elemento monitorado para a animação do header fixo */}
+            <div ref={greetingRef} className="pt-1">
+              <h1 className="text-3xl font-extrabold tracking-tight text-white">
+                Boa tarde, {userName}
+              </h1>
+            </div>
 
-        {/* 1. Cartão com Conectar Bancos + Total em Faturas (Refletindo dados do Supabase) */}
-        <BankCardsCarousel
-          totalInvoices={initialData.totalInvoices}
-          creditCard={initialData.creditCard}
-          cards={initialData.creditCards}
-          isPrivacyHidden={isPrivacyHidden}
-          onConnectBank={handleConnectBank}
-          onOpenInvoices={handleNavigateExtrato}
-        />
+            {/* 1. Cartão com Conectar Bancos + Total em Faturas (Refletindo dados do Supabase) */}
+            <BankCardsCarousel
+              totalInvoices={totalInvoices}
+              creditCard={activeDefaultCard}
+              cards={cards}
+              isPrivacyHidden={isPrivacyHidden}
+              onConnectBank={() => setSelectedSegment("cartoes")}
+              onOpenInvoices={() => setSelectedSegment("cartoes")}
+            />
 
-        {/* 2. Cartão de Saldo em Contas (Refletindo contas reais do Supabase: Nubank, VR, etc.) */}
-        <AccountsOverviewCard
-          totalBalance={initialData.totalAccountsBalance}
-          accounts={initialData.accounts}
-          isPrivacyHidden={isPrivacyHidden}
-          onOpenDetails={handleNavigateExtrato}
-        />
+            {/* 2. Cartão de Saldo em Contas (Refletindo contas reais do Supabase: Nubank, VR, etc.) */}
+            <AccountsOverviewCard
+              totalBalance={initialData.totalAccountsBalance}
+              accounts={initialData.accounts}
+              isPrivacyHidden={isPrivacyHidden}
+              onOpenDetails={handleNavigateExtrato}
+            />
 
-        {/* 3. Cartão Largura Total: Gastos do Mês com barra verde neon e marcador dinâmico */}
-        <MonthlySpendingCard
-          totalSpent={initialData.monthOverview.totalSpent}
-          limitPlanned={initialData.monthOverview.limitPlanned}
-          percentageConsumed={initialData.monthOverview.percentageConsumed}
-          isPrivacyHidden={isPrivacyHidden}
-          onOpenDetails={handleNavigateExtrato}
-        />
+            {/* 3. Cartão Largura Total: Gastos do Mês com barra verde neon e marcador dinâmico */}
+            <MonthlySpendingCard
+              totalSpent={initialData.monthOverview.totalSpent}
+              limitPlanned={initialData.monthOverview.limitPlanned}
+              percentageConsumed={initialData.monthOverview.percentageConsumed}
+              isPrivacyHidden={isPrivacyHidden}
+              onOpenDetails={handleNavigateExtrato}
+            />
 
-        {/* 4. Grid Bento de Widgets (Categorias, Fluxo de Caixa, Limite Usado, Parcelamentos, Fatura, Assinaturas) */}
-        <BentoDashboardGrid
-          isPrivacyHidden={isPrivacyHidden}
-          creditCard={initialData.creditCard}
-          subscriptions={initialData.subscriptions}
-          categories={initialData.monthOverview.categories}
-          topCategoryName={initialData.monthOverview.topCategoryName}
-          cashFlow={initialData.cashFlow}
-          installments={initialData.installments}
-          onWidgetClick={handleWidgetClick}
-          onAddWidgets={handleAddWidgets}
-        />
+            {/* 4. Grid Bento de Widgets (Categorias, Fluxo de Caixa, Limite Usado, Parcelamentos, Fatura, Assinaturas) */}
+            <BentoDashboardGrid
+              isPrivacyHidden={isPrivacyHidden}
+              creditCard={activeDefaultCard}
+              subscriptions={initialData.subscriptions}
+              categories={initialData.monthOverview.categories}
+              topCategoryName={initialData.monthOverview.topCategoryName}
+              cashFlow={initialData.cashFlow}
+              installments={initialData.installments}
+              onWidgetClick={handleWidgetClick}
+              onAddWidgets={handleAddWidgets}
+            />
 
-        {/* Insight / Notificação sutil com efeito Liquid Glass */}
-        <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl liquid-glass border border-white/[0.08] text-xs text-zinc-300 font-medium pb-2 shadow-sm min-h-[44px]">
-          <span className="text-base">💡</span>
-          <span className={isPrivacyHidden ? "balance-blur" : ""}>
-            R$ {formatCurrency(initialData.totalAccountsBalance)} parado poderia render mais em um cofrinho
-          </span>
-        </div>
+            {/* Insight / Notificação sutil com efeito Liquid Glass */}
+            <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl liquid-glass border border-white/[0.08] text-xs text-zinc-300 font-medium pb-2 shadow-sm min-h-[44px]">
+              <span className="text-base">💡</span>
+              <span className={isPrivacyHidden ? "balance-blur" : ""}>
+                R$ {formatCurrency(initialData.totalAccountsBalance)} parado poderia render mais em um cofrinho
+              </span>
+            </div>
+          </>
+        )}
       </div>
     </>
   );

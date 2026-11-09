@@ -2,7 +2,7 @@
 
 import React from "react";
 
-export type SegmentType = "contas" | "cartao" | "investimentos";
+export type SegmentType = "contas" | "cartoes" | "cartao" | "investimentos";
 
 export interface TopHeaderProps {
   userName?: string;
@@ -154,14 +154,14 @@ export function SegmentedFilterPills({
 
       <button
         type="button"
-        onClick={() => onSelectSegment("cartao")}
+        onClick={() => onSelectSegment("cartoes")}
         className={`px-4.5 py-2.5 rounded-full text-xs font-semibold tracking-tight transition-all duration-200 cursor-pointer min-h-[38px] ${
-          selectedSegment === "cartao"
+          selectedSegment === "cartoes" || selectedSegment === "cartao"
             ? "bg-white text-black shadow-md shadow-white/20"
             : "liquid-glass-pill text-white/80 hover:text-white"
         }`}
       >
-        Cartão
+        Cartões
       </button>
 
       <button
