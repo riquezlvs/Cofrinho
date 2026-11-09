@@ -10,13 +10,28 @@ import { BentoDashboardGrid } from "@/components/finance/BentoDashboardGrid";
 import { FloatingCofrinhoDock } from "@/components/finance/FloatingCofrinhoDock";
 import { DashboardData } from "@/types/finance";
 
-interface DashboardClientProps {
+export interface DashboardClientProps {
   initialData: DashboardData;
+  embedded?: boolean;
+  isPrivacyHidden?: boolean;
+  onTogglePrivacy?: () => void;
+  onNavigateToExtrato?: () => void;
+  onAskCofrinho?: () => void;
+  onOpenMascot?: () => void;
 }
 
-export function DashboardClient({ initialData }: DashboardClientProps) {
+export function DashboardClient({
+  initialData,
+  embedded = false,
+  isPrivacyHidden: externalPrivacy,
+  onTogglePrivacy: externalTogglePrivacy,
+  onNavigateToExtrato,
+  onAskCofrinho,
+  onOpenMascot,
+}: DashboardClientProps) {
   const router = useRouter();
-  const [isPrivacyHidden, setIsPrivacyHidden] = useState(false);
+  const [internalPrivacy, setInternalPrivacy] = useState(false);
+  const isPrivacyHidden = externalPrivacy !== undefined ? externalPrivacy : internalPrivacy;
   const [selectedSegment, setSelectedSegment] = useState<SegmentType>("contas");
   const [isGreetingScrolledOut, setIsGreetingScrolledOut] = useState(false);
 
@@ -26,7 +41,11 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
   const userName = initialData.userName || "João";
 
   const handleTogglePrivacy = () => {
-    setIsPrivacyHidden((prev) => !prev);
+    if (externalTogglePrivacy) {
+      externalTogglePrivacy();
+    } else {
+      setInternalPrivacy((prev) => !prev);
+    }
   };
 
   const handleConnectBank = () => {
@@ -34,16 +53,24 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
   };
 
   const handleAskCofrinho = () => {
-    console.log("Acionar assistente IA Pierre");
+    if (onAskCofrinho) {
+      onAskCofrinho();
+    } else {
+      console.log("Acionar assistente IA Pierre");
+    }
   };
 
   const handleNavigateExtrato = () => {
-    router.push("/extrato");
+    if (onNavigateToExtrato) {
+      onNavigateToExtrato();
+    } else {
+      router.push("/extrato");
+    }
   };
 
   const handleWidgetClick = (widgetName: string) => {
     if (widgetName === "transacoes" || widgetName === "fatura" || widgetName === "extrato") {
-      router.push("/extrato");
+      handleNavigateExtrato();
       return;
     }
     console.log("Widget clicado:", widgetName);
@@ -115,26 +142,8 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
     };
   }, []);
 
-  return (
-    <main
-      className="w-full max-w-full sm:max-w-[440px] md:max-w-[460px] min-h-screen bg-black text-white flex flex-col relative shadow-2xl sm:my-6 sm:rounded-[44px] sm:border sm:border-zinc-800/80 sm:overflow-clip"
-      data-purpose="cofrinho-liquid-glass-view"
-    >
-      {/* Dynamic Glowing Mesh Aurora Gradient FIXO no viewport do container */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-full sm:max-w-[440px] md:max-w-[460px] h-screen pointer-events-none overflow-hidden z-0">
-        {/* Glow Top Left (Magenta / Violeta / Indigo) */}
-        <div className="absolute -top-[120px] -left-[100px] w-[360px] h-[360px] bg-gradient-to-br from-indigo-600/70 via-purple-600/55 to-pink-600/60 rounded-full blur-[85px]" />
-        
-        {/* Glow Top Right (Rosa Neon / Laranja / Âmbar) */}
-        <div className="absolute -top-[130px] -right-[80px] w-[360px] h-[360px] bg-gradient-to-bl from-rose-500/80 via-orange-500/45 to-amber-500/35 rounded-full blur-[90px]" />
-        
-        {/* Glow Central Meio (Ciano / Turquesa / Esmeralda) */}
-        <div className="absolute top-[220px] left-[15%] w-[300px] h-[280px] bg-gradient-to-b from-cyan-500/25 via-teal-500/20 to-transparent rounded-full blur-[80px]" />
-
-        {/* Glow Inferior Suave (Azul Profundo / Roxo) para realçar o dock ao rolar */}
-        <div className="absolute bottom-10 left-[10%] w-[320px] h-[260px] bg-gradient-to-t from-purple-900/30 via-indigo-800/20 to-transparent rounded-full blur-[90px]" />
-      </div>
-
+  const content = (
+    <>
       {/* Header Fixo: Com gradiente sombreado permanente e nome animado ao rolar */}
       <TopHeader
         userName={userName}
@@ -210,6 +219,38 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
           </span>
         </div>
       </div>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="w-full flex flex-col relative" data-purpose="cofrinho-dashboard-view">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <main
+      className="w-full max-w-full sm:max-w-[440px] md:max-w-[460px] min-h-screen bg-black text-white flex flex-col relative shadow-2xl sm:my-6 sm:rounded-[44px] sm:border sm:border-zinc-800/80 sm:overflow-clip"
+      data-purpose="cofrinho-liquid-glass-view"
+    >
+      {/* Dynamic Glowing Mesh Aurora Gradient FIXO no viewport do container */}
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-full sm:max-w-[440px] md:max-w-[460px] h-screen pointer-events-none overflow-hidden z-0">
+        {/* Glow Top Left (Magenta / Violeta / Indigo) */}
+        <div className="absolute -top-[120px] -left-[100px] w-[360px] h-[360px] bg-gradient-to-br from-indigo-600/70 via-purple-600/55 to-pink-600/60 rounded-full blur-[85px]" />
+        
+        {/* Glow Top Right (Rosa Neon / Laranja / Âmbar) */}
+        <div className="absolute -top-[130px] -right-[80px] w-[360px] h-[360px] bg-gradient-to-bl from-rose-500/80 via-orange-500/45 to-amber-500/35 rounded-full blur-[90px]" />
+        
+        {/* Glow Central Meio (Ciano / Turquesa / Esmeralda) */}
+        <div className="absolute top-[220px] left-[15%] w-[300px] h-[280px] bg-gradient-to-b from-cyan-500/25 via-teal-500/20 to-transparent rounded-full blur-[80px]" />
+
+        {/* Glow Inferior Suave (Azul Profundo / Roxo) para realçar o dock ao rolar */}
+        <div className="absolute bottom-10 left-[10%] w-[320px] h-[260px] bg-gradient-to-t from-purple-900/30 via-indigo-800/20 to-transparent rounded-full blur-[90px]" />
+      </div>
+
+      {content}
 
       {/* Floating Liquid Glass Dock (Search bar + Bottom capsule navigation + Mascot) com alturas aumentadas */}
       <FloatingCofrinhoDock
@@ -217,7 +258,7 @@ export function DashboardClient({ initialData }: DashboardClientProps) {
         onAskCofrinho={handleAskCofrinho}
         onNavigateHome={() => console.log("Já está na home")}
         onTransfer={handleNavigateExtrato}
-        onOpenMascot={() => console.log("Abrir mascote")}
+        onOpenMascot={onOpenMascot}
       />
     </main>
   );

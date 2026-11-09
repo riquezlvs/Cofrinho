@@ -1,10 +1,64 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 import { CreditCardSummary, SubscriptionSummary } from "@/types/finance";
+import { getGoogleFaviconUrl, detectBrand } from "@/lib/brands";
 
 interface BentoWidgetsProps {
   creditCard: CreditCardSummary;
   subscriptions: SubscriptionSummary;
   onManageSubscriptions?: () => void;
+}
+
+function MiniSubscriptionLogo({
+  service,
+}: {
+  service: { name?: string; domain?: string; initial: string; bgColor: string };
+}) {
+  const [imgError, setImgError] = useState(false);
+
+  const getDomain = (): string | null => {
+    if (service.domain) return service.domain;
+    if (service.name) {
+      const b = detectBrand(service.name);
+      if (b) return b.domain;
+    }
+    const init = (service.initial || "").toUpperCase();
+    if (init === "N") return "netflix.com";
+    if (init === "S") return "spotify.com";
+    if (init === "G") return "google.com";
+    if (init === "A") return "primevideo.com";
+    return null;
+  };
+
+  const domain = getDomain();
+
+  if (domain && !imgError) {
+    const faviconUrl = getGoogleFaviconUrl(domain, 64);
+    return (
+      <div
+        className="w-5 h-5 rounded-full bg-[#1b1c22] ring-2 ring-[#121215] flex items-center justify-center overflow-hidden shrink-0 p-0.5"
+        title={service.name || domain}
+      >
+        <img
+          src={faviconUrl}
+          alt={service.name || domain}
+          className="w-full h-full object-contain rounded-full"
+          onError={() => setImgError(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      key={service.initial}
+      className="w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center ring-2 ring-[#121215]"
+      style={{ backgroundColor: service.bgColor }}
+    >
+      {service.initial}
+    </div>
+  );
 }
 
 export function BentoWidgets({
@@ -115,17 +169,11 @@ export function BentoWidgets({
           </p>
         </div>
 
-        {/* Mini brand icons pile */}
+        {/* Mini brand icons pile com ícones originais */}
         <div className="mt-3 pt-1 flex items-center justify-between">
           <div className="flex -space-x-1.5 overflow-hidden">
             {subscriptions.services.map((item, index) => (
-              <div
-                key={index}
-                className="w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center ring-2 ring-[#121215]"
-                style={{ backgroundColor: item.bgColor }}
-              >
-                {item.initial}
-              </div>
+              <MiniSubscriptionLogo key={index} service={item} />
             ))}
           </div>
           <button

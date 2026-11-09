@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { CreditCardSummary } from "@/types/finance";
+import { getGoogleFaviconUrl, detectBrand } from "@/lib/brands";
 
 interface BankCardsCarouselProps {
   totalInvoices?: number;
@@ -10,6 +11,57 @@ interface BankCardsCarouselProps {
   isPrivacyHidden: boolean;
   onConnectBank?: () => void;
   onOpenInvoices?: () => void;
+}
+
+function BankCardIcon({ cardName, size = 24 }: { cardName: string; size?: number }) {
+  const [imgError, setImgError] = useState(false);
+  const n = (cardName || "").toLowerCase();
+
+  const getDomain = (): string | null => {
+    if (n.includes("santander")) return "santander.com.br";
+    if (n.includes("nubank") || n.includes("roxinho") || n.includes("nu")) return "nubank.com.br";
+    if (n.includes("itau") || n.includes("itaú")) return "itau.com.br";
+    if (n.includes("inter")) return "inter.co";
+    if (n.includes("bradesco")) return "bradesco.com.br";
+    if (n.includes("c6")) return "c6bank.com.br";
+    if (n.includes("caixa")) return "caixa.gov.br";
+    if (n.includes("bb") || n.includes("brasil")) return "bb.com.br";
+    if (n.includes("xp")) return "xpi.com.br";
+    if (n.includes("btg")) return "btgpactual.com";
+
+    const detected = detectBrand(cardName);
+    return detected?.domain || null;
+  };
+
+  const domain = getDomain();
+
+  if (domain && !imgError) {
+    const faviconUrl = getGoogleFaviconUrl(domain, 64);
+    return (
+      <div
+        className="rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center overflow-hidden shrink-0 shadow-xs"
+        style={{ width: size, height: size, padding: Math.max(1, Math.floor(size * 0.12)) }}
+        title={cardName}
+      >
+        <img
+          src={faviconUrl}
+          alt={cardName}
+          className="w-full h-full object-contain rounded-full"
+          onError={() => setImgError(true)}
+        />
+      </div>
+    );
+  }
+
+  // Fallback
+  return (
+    <div
+      style={{ width: size, height: size }}
+      className="rounded-full bg-[#ec0000] flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+    >
+      {(cardName || "C")[0].toUpperCase()}
+    </div>
+  );
 }
 
 export function BankCardsCarousel({
@@ -66,8 +118,9 @@ export function BankCardsCarousel({
                 <span className="text-[11px] font-medium text-zinc-400 tracking-tight group-hover/inv:text-zinc-200 transition-colors">
                   Total em faturas
                 </span>
-                <span className="text-[10px] text-zinc-400 font-medium">
-                  {activeCard.cardName} • Fecha em {activeCard.closingDays} dias
+                <span className="text-[10px] text-zinc-400 font-medium flex items-center gap-1.5">
+                  <BankCardIcon cardName={activeCard.cardName} size={15} />
+                  <span>{activeCard.cardName} • Fecha em {activeCard.closingDays} dias</span>
                 </span>
               </div>
               <span
@@ -81,12 +134,10 @@ export function BankCardsCarousel({
           </>
         ) : (
           <>
-            {/* Slide 1: Detalhe do Cartão Principal */}
+            {/* Slide 1: Detalhe do Cartão Principal com Ícone Original do Banco */}
             <div className="w-full flex items-center justify-between pb-3 border-b border-white/[0.08]">
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-[#ec0000] flex items-center justify-center text-white text-[10px] font-bold">
-                  S
-                </div>
+                <BankCardIcon cardName={activeCard.cardName} size={24} />
                 <span className="text-xs font-semibold text-white">
                   Cartão {activeCard.cardName}
                 </span>

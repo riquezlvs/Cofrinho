@@ -32,6 +32,8 @@ export interface SubscriptionSummary {
   monthlyAmount: number;
   activeCount: number;
   services: {
+    name?: string;
+    domain?: string;
     initial: string;
     bgColor: string;
   }[];
@@ -62,17 +64,33 @@ export interface InstallmentSummary {
   nextBillAmount: number;
 }
 
+export interface InstallmentScheduleItem {
+  number: number;
+  total: number;
+  date: string;
+  formattedDate: string;
+  amount: number;
+  status: "paid" | "current" | "pending";
+}
+
 export interface ExtratoTransaction {
   id: string;
   title: string;
   description: string;
   amount: number;
+  originalTotalAmount?: number;
   type: "income" | "expense";
   categoryIcon?: string;
   categoryName?: string;
   categoryColor?: string;
   paymentMethod?: string;
   accountOrCard?: string;
+  accountType?: string;
+  accountName?: string;
+  installmentGroupId?: string;
+  installmentNumber?: number;
+  installmentTotal?: number;
+  installmentSchedule?: InstallmentScheduleItem[];
   transactionDate: string;
   formattedDate?: string;
   dateGroup?: string;

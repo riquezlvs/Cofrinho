@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { CreditCardSummary, SubscriptionSummary, CategorySpend } from "@/types/finance";
+import { getGoogleFaviconUrl, detectBrand } from "@/lib/brands";
 
 interface BentoDashboardGridProps {
   isPrivacyHidden: boolean;
@@ -27,6 +28,97 @@ interface BentoDashboardGridProps {
   onAddWidgets?: () => void;
 }
 
+function SubscriptionLogo({
+  service,
+}: {
+  service: { name?: string; domain?: string; initial: string; bgColor: string };
+}) {
+  const [imgError, setImgError] = useState(false);
+
+  const getDomain = (): string | null => {
+    if (service.domain) return service.domain;
+    if (service.name) {
+      const b = detectBrand(service.name);
+      if (b) return b.domain;
+    }
+    const init = (service.initial || "").toUpperCase();
+    if (init === "N") return "netflix.com";
+    if (init === "S") return "spotify.com";
+    if (init === "G") return "google.com";
+    if (init === "A") return "primevideo.com";
+    return null;
+  };
+
+  const domain = getDomain();
+
+  if (domain && !imgError) {
+    const faviconUrl = getGoogleFaviconUrl(domain, 64);
+    return (
+      <div
+        className="w-5 h-5 rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center overflow-hidden shrink-0 shadow-sm p-0.5"
+        title={service.name || domain}
+      >
+        <img
+          src={faviconUrl}
+          alt={service.name || domain}
+          className="w-full h-full object-contain rounded-full"
+          loading="lazy"
+          onError={() => setImgError(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{ backgroundColor: service.bgColor }}
+      className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shadow-sm ring-1 ring-black/40 shrink-0"
+    >
+      {service.initial}
+    </div>
+  );
+}
+
+function CardWidgetIcon({ cardName }: { cardName: string }) {
+  const [imgError, setImgError] = useState(false);
+  const n = (cardName || "").toLowerCase();
+
+  const getDomain = (): string | null => {
+    if (n.includes("santander")) return "santander.com.br";
+    if (n.includes("nubank") || n.includes("roxinho") || n.includes("nu")) return "nubank.com.br";
+    if (n.includes("itau") || n.includes("itaú")) return "itau.com.br";
+    if (n.includes("inter")) return "inter.co";
+    if (n.includes("bradesco")) return "bradesco.com.br";
+    if (n.includes("c6")) return "c6bank.com.br";
+    const detected = detectBrand(cardName);
+    return detected?.domain || null;
+  };
+
+  const domain = getDomain();
+
+  if (domain && !imgError) {
+    return (
+      <div className="w-8 h-8 rounded-full bg-[#1b1c22] border border-white/15 flex items-center justify-center overflow-hidden shadow-inner p-1 shrink-0">
+        <img
+          src={getGoogleFaviconUrl(domain, 64)}
+          alt={cardName}
+          className="w-full h-full object-contain rounded-full"
+          onError={() => setImgError(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-8 h-8 rounded-full bg-white/[0.08] border border-white/15 flex items-center justify-center text-zinc-300 group-hover:text-rose-400 group-hover:bg-rose-500/10 transition-colors shadow-inner shrink-0">
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <rect x="2" y="5" width="20" height="14" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="2" y1="10" x2="22" y2="10" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  );
+}
+
 export function BentoDashboardGrid({
   isPrivacyHidden,
   creditCard,
@@ -43,7 +135,7 @@ export function BentoDashboardGrid({
     activeCount: 1,
     nextBillAmount: 251.05,
   },
-  investments = {
+  investments: _investments = {
     total: 12450.0,
     profitability: 1.15,
   },
@@ -206,18 +298,13 @@ export function BentoDashboardGrid({
           </div>
         </div>
 
-        {/* Widget 5: Fatura Atual (Bottom Left) */}
+        {/* Widget 5: Fatura Atual com Logo Oficial do Banco do Cartão (Bottom Left) */}
         <div
           onClick={() => onWidgetClick?.("fatura")}
           className="rounded-[28px] liquid-glass-card p-4 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300"
         >
           <div className="flex items-start justify-between pb-2 border-b border-white/[0.08]">
-            <div className="w-8 h-8 rounded-full bg-white/[0.08] border border-white/15 flex items-center justify-center text-zinc-300 group-hover:text-rose-400 group-hover:bg-rose-500/10 transition-colors shadow-inner">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <rect x="2" y="5" width="20" height="14" rx="2" strokeLinecap="round" strokeLinejoin="round" />
-                <line x1="2" y1="10" x2="22" y2="10" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
+            <CardWidgetIcon cardName={creditCard.cardName} />
             <svg className="w-3.5 h-3.5 text-zinc-500 group-hover:text-white transition-colors" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -229,12 +316,12 @@ export function BentoDashboardGrid({
               R$ {formatCurrency(creditCard.spent)}
             </span>
             <span className="text-[10px] text-zinc-400">
-              Fecha em {creditCard.closingDays} dias
+              {creditCard.cardName} • Fecha em {creditCard.closingDays} dias
             </span>
           </div>
         </div>
 
-        {/* Widget 6: Assinaturas (Bottom Right) */}
+        {/* Widget 6: Assinaturas com Ícones Originais dos Serviços (Bottom Right) */}
         <div
           onClick={() => onWidgetClick?.("assinaturas")}
           className="rounded-[28px] liquid-glass-card p-4 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300"
@@ -256,16 +343,10 @@ export function BentoDashboardGrid({
             <span className={`text-base font-bold text-white tracking-tight ${isPrivacyHidden ? "balance-blur" : ""}`}>
               R$ {formatCurrency(subscriptions.monthlyAmount)}
             </span>
-            {/* Badges de Serviços Ativos */}
-            <div className="flex items-center gap-1 pt-1">
-              {subscriptions.services.slice(0, 3).map((s, idx) => (
-                <div
-                  key={idx}
-                  style={{ backgroundColor: s.bgColor }}
-                  className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white shadow-sm"
-                >
-                  {s.initial}
-                </div>
+            {/* Badges de Serviços Ativos com Ícones Oficiais */}
+            <div className="flex items-center gap-1.5 pt-1">
+              {subscriptions.services.slice(0, 4).map((s, idx) => (
+                <SubscriptionLogo key={idx} service={s} />
               ))}
               <span className="text-[10px] text-zinc-400 ml-0.5">
                 {subscriptions.activeCount} ativas

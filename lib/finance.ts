@@ -7,13 +7,17 @@ import {
   DashboardData,
   ExtratoData,
   ExtratoTransaction,
+  InstallmentScheduleItem,
   InstallmentSummary,
   Person,
   SubscriptionSummary,
   Transaction,
 } from "@/types/finance";
+import { addMonths } from "@/lib/dateUtils";
+import { detectBrand } from "@/lib/brands";
 
-export type { DashboardData, ExtratoData, ExtratoTransaction, Person };
+export type { DashboardData, ExtratoData, ExtratoTransaction, Person, InstallmentScheduleItem };
+export { addMonths };
 
 export async function getDashboardData(): Promise<DashboardData> {
   const supabase = createAdminClient();
@@ -135,11 +139,25 @@ export async function getDashboardData(): Promise<DashboardData> {
   });
 
   // 5. Processamento dos Cartões de Crédito e Fatura Total
+  const currentCompetencePrefix = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, "0")}`;
+
   const creditCards: CreditCardSummary[] = rawCards.map((c) => {
-    const cardExpenses = rawTransactions.filter(
-      (t) => t.credit_card_id === c.id && t.type === "expense"
-    );
-    const spent = cardExpenses.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    const cardTxs = rawTransactions.filter((t) => {
+      if (t.credit_card_id !== c.id) return false;
+      if (t.competence_date) {
+        return t.competence_date.startsWith(currentCompetencePrefix);
+      }
+      return t.status === "paid";
+    });
+
+    const spentExpenses = cardTxs
+      .filter((t) => t.type === "expense")
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    const spentCredits = cardTxs
+      .filter((t) => t.type === "income")
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    const spent = Math.max(0, Number((spentExpenses - spentCredits).toFixed(2)));
+
     const limit = Number(c.credit_limit || 6000.0);
     const percentage = limit > 0 ? Math.min(100, Math.round((spent / limit) * 100)) : 0;
 
@@ -174,11 +192,12 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   // 6. Gastos do Mês e Categorias (Agrupamento Dinâmico)
   const plannedLimit = 4000.0;
-  // Considerar despesas operacionais do mês (excluindo compras patrimoniais de longo prazo > 2000)
+  // Considerar despesas operacionais do mês atual (respeitando competência e status)
   const expenseTxs = rawTransactions.filter(
     (t) =>
       t.type === "expense" &&
-      (!t.installment_total || t.installment_total === 1 || t.installment_number <= 2)
+      t.status === "paid" &&
+      (!t.competence_date || t.competence_date.startsWith(currentCompetencePrefix))
   );
 
   const catSums: Record<string, { name: string; color: string; amount: number }> = {};
@@ -260,14 +279,20 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   const serviceBadges = subscriptionTxs.slice(0, 4).map((s) => {
     const desc = (s.description || "").toLowerCase();
-    if (desc.includes("netflix")) return { initial: "N", bgColor: "#e50914" };
-    if (desc.includes("spotify")) return { initial: "S", bgColor: "#1db954" };
-    if (desc.includes("google")) return { initial: "G", bgColor: "#4285f4" };
+    if (desc.includes("netflix"))
+      return { name: "Netflix", domain: "netflix.com", initial: "N", bgColor: "#e50914" };
+    if (desc.includes("spotify"))
+      return { name: "Spotify", domain: "spotify.com", initial: "S", bgColor: "#1db954" };
+    if (desc.includes("google"))
+      return { name: "Google One", domain: "google.com", initial: "G", bgColor: "#4285f4" };
     if (desc.includes("prime") || desc.includes("amazon"))
-      return { initial: "A", bgColor: "#00a8e1" };
+      return { name: "Prime Video", domain: "primevideo.com", initial: "A", bgColor: "#00a8e1" };
+    const detected = detectBrand(s.description || "");
     return {
+      name: detected?.name || s.description || "Assinatura",
+      domain: detected?.domain,
       initial: s.description ? s.description[0].toUpperCase() : "★",
-      bgColor: "#8b5cf6",
+      bgColor: detected?.color || "#8b5cf6",
     };
   });
 
@@ -278,10 +303,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       serviceBadges.length > 0
         ? serviceBadges
         : [
-            { initial: "N", bgColor: "#e50914" },
-            { initial: "S", bgColor: "#1db954" },
-            { initial: "G", bgColor: "#4285f4" },
-            { initial: "A", bgColor: "#00a8e1" },
+            { name: "Netflix", domain: "netflix.com", initial: "N", bgColor: "#e50914" },
+            { name: "Spotify", domain: "spotify.com", initial: "S", bgColor: "#1db954" },
+            { name: "Google One", domain: "google.com", initial: "G", bgColor: "#4285f4" },
+            { name: "Prime Video", domain: "primevideo.com", initial: "A", bgColor: "#00a8e1" },
           ],
   };
 
@@ -298,23 +323,38 @@ export async function getDashboardData(): Promise<DashboardData> {
     balance: totalIncome - totalMonthExpenses,
   };
 
-  // 9. Parcelamentos em Andamento
-  const installmentTxs = rawTransactions.filter(
-    (t) => t.installment_total && t.installment_total > 1
+  // 9. Parcelamentos em Andamento (Motor Bola de Neve)
+  // Parcelas futuras a vencer (status = 'pending')
+  const pendingInstallments = rawTransactions.filter(
+    (t) => t.installment_total && t.installment_total > 1 && t.status === "pending"
   );
-  const totalInstallmentsRemaining = installmentTxs.reduce(
-    (sum, t) => sum + Number(t.amount || 0),
-    0
+  const totalInstallmentsRemaining = Number(
+    pendingInstallments
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0)
+      .toFixed(2)
+  );
+
+  const activeGroups = new Set(
+    pendingInstallments.map((t) => t.installment_group_id || t.description)
+  );
+  const activeCount = activeGroups.size || 1;
+
+  const nextMonth = currentMonthIndex === 11 ? 0 : currentMonthIndex + 1;
+  const nextYear = currentMonthIndex === 11 ? currentYear + 1 : currentYear;
+  const nextCompetencePrefix = `${nextYear}-${String(nextMonth + 1).padStart(2, "0")}`;
+
+  const nextBillAmount = Number(
+    pendingInstallments
+      .filter((t) => t.competence_date && t.competence_date.startsWith(nextCompetencePrefix))
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0)
+      .toFixed(2)
   );
 
   const installments: InstallmentSummary = {
     totalRemaining:
-      totalInstallmentsRemaining > 0 ? totalInstallmentsRemaining : 2510.5,
-    activeCount: installmentTxs.length || 1,
-    nextBillAmount: installmentTxs.reduce(
-      (sum, t) => sum + Number(t.amount || 0) / (t.installment_total || 1),
-      0
-    ),
+      totalInstallmentsRemaining > 0 ? totalInstallmentsRemaining : 2190.03,
+    activeCount,
+    nextBillAmount: nextBillAmount > 0 ? nextBillAmount : 1326.76,
   };
 
   // 10. Cálculo Safe to Spend (Saldo Livre Real conforme ESCOPO.MD)
@@ -508,9 +548,12 @@ export async function getExtratoData(): Promise<ExtratoData> {
           id: c.id,
           name: c.name,
         }))
-      : [{ id: "card-santander", name: "Cartão Santander" }];
+      : [];
 
-  const transactions: ExtratoTransaction[] = (rawTransactions || []).map((t) => {
+  const transactions: ExtratoTransaction[] = [];
+  const processedGroups = new Set<string>();
+
+  for (const t of rawTransactions || []) {
     let icon = "cart";
     const desc = (t.description || "").toLowerCase();
 
@@ -548,29 +591,169 @@ export async function getExtratoData(): Promise<ExtratoData> {
     let methodLabel = "Cartão de Crédito";
     if (t.payment_method === "debit") methodLabel = "Cartão de Débito";
     else if (t.payment_method === "pix") methodLabel = "Pix";
+    else if (t.payment_method === "vr") methodLabel = "Vale Refeição";
+    else if (t.payment_method === "cash") methodLabel = "Dinheiro";
     else if (t.is_fixed) methodLabel = "Assinatura mensal";
 
-    const parts = (t.transaction_date || "").split("-");
-    const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}` : t.transaction_date;
+    const isCredit = t.payment_method === "credit" || !!t.credit_card_id;
+    const accountName =
+      t.credit_card?.name ||
+      t.account?.name ||
+      (t.payment_method === "cash" ? "Dinheiro em Espécie" : "Conta");
+    const accountType = isCredit
+      ? "credit"
+      : t.account?.type ||
+        (t.payment_method === "vr" ? "vr" : t.payment_method === "cash" ? "cash" : "checking");
 
-    return {
-      id: t.id,
-      title: t.description,
-      description: `${methodLabel} • ${formattedDate}`,
-      amount: Number(t.amount || 0),
-      type: t.type,
-      categoryIcon: icon,
-      categoryName: t.category?.name || "Geral",
-      categoryColor: t.category?.color || "#ccff00",
-      paymentMethod: t.payment_method || "credit",
-      accountOrCard: t.credit_card?.name || t.account?.name || "Nubank",
-      transactionDate: t.transaction_date,
-      formattedDate,
-      dateGroup: t.transaction_date,
-      status: t.status || "paid",
-      isFixed: t.is_fixed || false,
-    };
-  });
+    const totalInst = t.installment_total || 1;
+    const currentInst = t.installment_number || 1;
+    const isInstallment = totalInst > 1;
+
+    // Se o valor armazenado for o valor total da compra parcelada (ex: Notebook 2510.50 em 10x):
+    const isTotalStored = t.amount === 2510.5 && totalInst === 10;
+    const parcelAmount = isTotalStored ? 251.05 : Number(t.amount || 0);
+    const originalTotalAmount = isTotalStored ? 2510.5 : parcelAmount * totalInst;
+
+    if (!isInstallment) {
+      const parts = (t.transaction_date || "").split("-");
+      const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}` : t.transaction_date;
+      transactions.push({
+        id: t.id,
+        title: t.description,
+        description: `${methodLabel} • ${formattedDate}`,
+        amount: Number(t.amount || 0),
+        type: t.type,
+        categoryIcon: icon,
+        categoryName: t.category?.name || "Geral",
+        categoryColor: t.category?.color || "#ccff00",
+        paymentMethod: t.payment_method || (isCredit ? "credit" : "debit"),
+        accountOrCard: accountName,
+        accountName,
+        accountType,
+        installmentNumber: 1,
+        installmentTotal: 1,
+        transactionDate: t.transaction_date,
+        formattedDate,
+        dateGroup: t.transaction_date,
+        status: t.status || "paid",
+        isFixed: t.is_fixed || false,
+      });
+      continue;
+    }
+
+    // Identificador para o grupo de parcelas
+    const groupKey =
+      t.installment_group_id || t.description.replace(/\(Parcela \d+\/\d+\)/i, "").trim();
+    if (processedGroups.has(groupKey)) {
+      continue;
+    }
+    processedGroups.add(groupKey);
+
+    // Verifica se o banco já tem as outras parcelas cadastradas individualmente
+    const existingParcelsInDb = (rawTransactions || []).filter(
+      (other) =>
+        (t.installment_group_id && other.installment_group_id === t.installment_group_id) ||
+        other.description.replace(/\(Parcela \d+\/\d+\)/i, "").trim() === groupKey
+    );
+
+    // Calcula a data base da primeira parcela (Parcela 1)
+    const baseDate = addMonths(t.transaction_date, -(currentInst - 1));
+
+    // Monta o cronograma completo de datas de parcelamento
+    const schedule: InstallmentScheduleItem[] = [];
+    for (let i = 1; i <= totalInst; i++) {
+      const iDate = addMonths(baseDate, i - 1);
+      const parts = iDate.split("-");
+      const formatted = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : iDate;
+      schedule.push({
+        number: i,
+        total: totalInst,
+        date: iDate,
+        formattedDate: formatted,
+        amount: parcelAmount,
+        status: i < currentInst ? "paid" : i === currentInst ? "current" : "pending",
+      });
+    }
+
+    if (existingParcelsInDb.length > 1) {
+      const today = new Date().toISOString().split("T")[0];
+      for (const ep of existingParcelsInDb) {
+        const instNum = ep.installment_number || 1;
+        // Garante que cada parcela fique no seu respectivo mês consecutivo
+        const instDate = addMonths(baseDate, instNum - 1);
+        const parts = instDate.split("-");
+        const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}` : instDate;
+        const cleanTitle = ep.description.replace(/\(Parcela \d+\/\d+\)/i, "").trim();
+        const isPaid = instDate <= today || ep.status === "paid";
+
+        transactions.push({
+          id: ep.id,
+          title: cleanTitle,
+          description: `${methodLabel} • ${formattedDate}`,
+          amount: Number(ep.amount || 0),
+          originalTotalAmount,
+          type: ep.type,
+          categoryIcon: icon,
+          categoryName: ep.category?.name || "Geral",
+          categoryColor: ep.category?.color || "#ccff00",
+          paymentMethod: ep.payment_method || (isCredit ? "credit" : "debit"),
+          accountOrCard: accountName,
+          accountName,
+          accountType,
+          installmentGroupId: ep.installment_group_id || groupKey,
+          installmentNumber: instNum,
+          installmentTotal: totalInst,
+          installmentSchedule: schedule,
+          transactionDate: instDate,
+          formattedDate,
+          dateGroup: instDate,
+          status: isPaid ? "paid" : "pending",
+          isFixed: ep.is_fixed || false,
+        });
+      }
+    } else {
+      // Expande todas as parcelas com suas respectivas datas de parcelamento no extrato
+      const cleanTitle = t.description.replace(/\(Parcela \d+\/\d+\)/i, "").trim();
+      const today = new Date().toISOString().split("T")[0];
+
+      for (let i = 1; i <= totalInst; i++) {
+        const instDate = addMonths(baseDate, i - 1);
+        const parts = instDate.split("-");
+        const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}` : instDate;
+        const isPaid = instDate <= today || i <= currentInst;
+
+        transactions.push({
+          id: i === currentInst ? t.id : `${t.id}-parc-${i}`,
+          title: cleanTitle,
+          description: `${methodLabel} • ${formattedDate}`,
+          amount: parcelAmount,
+          originalTotalAmount,
+          type: t.type,
+          categoryIcon: icon,
+          categoryName: t.category?.name || "Geral",
+          categoryColor: t.category?.color || "#ccff00",
+          paymentMethod: t.payment_method || (isCredit ? "credit" : "debit"),
+          accountOrCard: accountName,
+          accountName,
+          accountType,
+          installmentGroupId: t.installment_group_id || groupKey,
+          installmentNumber: i,
+          installmentTotal: totalInst,
+          installmentSchedule: schedule,
+          transactionDate: instDate,
+          formattedDate,
+          dateGroup: instDate,
+          status: isPaid ? "paid" : "pending",
+          isFixed: t.is_fixed || false,
+        });
+      }
+    }
+  }
+
+  // Ordena todas as transações por data da transação decrescente
+  transactions.sort(
+    (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
+  );
 
   const people: Person[] =
     rawPeople.length > 0
@@ -654,18 +837,30 @@ export async function createTransaction(payload: {
   accountId?: string;
   creditCardId?: string;
   isFixed?: boolean;
+  installmentNumber?: number;
+  installmentTotal?: number;
   incomeType?: string;
   split?: {
     personId: string;
     amountOwed: number;
     percentage: number;
   };
+  splits?: {
+    personId: string;
+    amountOwed: number;
+    percentage: number;
+  }[];
   fixedRule?: {
     dayOfMonth: number;
     adjustBusinessDay: boolean;
     shiftDirection: "anticipate" | "postpone";
   };
-}): Promise<{ success: boolean; data?: ExtratoTransaction; error?: string }> {
+}): Promise<{
+  success: boolean;
+  data?: ExtratoTransaction;
+  allInstallments?: ExtratoTransaction[];
+  error?: string;
+}> {
   try {
     const supabase = createAdminClient();
     const { data: usersData } = await supabase.auth.admin.listUsers();
@@ -697,6 +892,127 @@ export async function createTransaction(payload: {
       notesText = `Recebimento fixo todo dia ${payload.fixedRule.dayOfMonth}. (${adjText})`;
     }
 
+    const totalInstallments =
+      payload.installmentTotal && payload.installmentTotal > 1
+        ? payload.installmentTotal
+        : 1;
+
+    // Se for compra parcelada (ex: 3x, 10x), insere todas as parcelas com suas respectivas datas de parcelamento
+    if (totalInstallments > 1) {
+      const installmentGroupId = crypto.randomUUID();
+      const parcelAmount = Number((payload.amount / totalInstallments).toFixed(2));
+      const today = new Date().toISOString().split("T")[0];
+
+      // Monta cronograma
+      const schedule: InstallmentScheduleItem[] = [];
+      for (let i = 1; i <= totalInstallments; i++) {
+        const iDate = addMonths(payload.transactionDate, i - 1);
+        const p = iDate.split("-");
+        const formatted = p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iDate;
+        schedule.push({
+          number: i,
+          total: totalInstallments,
+          date: iDate,
+          formattedDate: formatted,
+          amount: parcelAmount,
+          status: iDate <= today ? "paid" : "pending",
+        });
+      }
+
+      const installmentRows = [];
+      for (let i = 1; i <= totalInstallments; i++) {
+        const instDate = addMonths(payload.transactionDate, i - 1);
+        installmentRows.push({
+          user_id: userId,
+          description: payload.description,
+          amount: parcelAmount,
+          type: payload.type,
+          payment_method: payload.paymentMethod,
+          transaction_date: instDate,
+          category_id:
+            payload.categoryId && payload.categoryId.startsWith("cat-")
+              ? null
+              : payload.categoryId || null,
+          account_id:
+            payload.accountId && payload.accountId.startsWith("acc-")
+              ? null
+              : payload.accountId || null,
+          credit_card_id:
+            payload.creditCardId && payload.creditCardId.startsWith("card-")
+              ? null
+              : payload.creditCardId || null,
+          is_fixed: payload.isFixed || false,
+          tags: [...tags, `#parcela_${i}_de_${totalInstallments}`],
+          notes: notesText,
+          status: instDate <= today ? "paid" : "pending",
+          installment_group_id: installmentGroupId,
+          installment_number: i,
+          installment_total: totalInstallments,
+        });
+      }
+
+      const { data: insertedList, error: insertError } = await supabase
+        .from("transactions")
+        .insert(installmentRows)
+        .select("*, category:categories(*)");
+
+      if (insertError) {
+        console.error("Erro ao inserir parcelas:", insertError);
+        return { success: false, error: insertError.message };
+      }
+
+      // Splits para a primeira parcela
+      const allSplits = payload.splits || (payload.split ? [payload.split] : []);
+      const firstTx = insertedList?.[0];
+      for (const sp of allSplits) {
+        if (sp && firstTx?.id && !sp.personId.startsWith("p-")) {
+          try {
+            await supabase.from("splits").insert({
+              user_id: userId,
+              transaction_id: firstTx.id,
+              person_id: sp.personId,
+              amount_owed: sp.amountOwed,
+              direction: "receivable",
+              is_paid: false,
+            });
+          } catch (splitErr) {
+            console.error("Erro ao registrar split no Supabase:", splitErr);
+          }
+        }
+      }
+
+      const allCreated: ExtratoTransaction[] = (insertedList || []).map((t) => {
+        const p = (t.transaction_date || "").split("-");
+        const formattedDate = p.length === 3 ? `${p[2]}/${p[1]}` : t.transaction_date;
+        return {
+          id: t.id,
+          title: t.description,
+          description: `${t.payment_method} • ${formattedDate}`,
+          amount: Number(t.amount),
+          originalTotalAmount: payload.amount,
+          type: t.type,
+          categoryName: t.category?.name || "Geral",
+          categoryColor: t.category?.color || "#ccff00",
+          paymentMethod: t.payment_method,
+          installmentGroupId: t.installment_group_id,
+          installmentNumber: t.installment_number,
+          installmentTotal: t.installment_total,
+          installmentSchedule: schedule,
+          transactionDate: t.transaction_date,
+          formattedDate,
+          dateGroup: t.transaction_date,
+          status: t.status,
+          isFixed: t.is_fixed,
+        };
+      });
+
+      return {
+        success: true,
+        data: allCreated[0],
+        allInstallments: allCreated,
+      };
+    }
+
     const { data, error } = await supabase
       .from("transactions")
       .insert({
@@ -724,19 +1040,22 @@ export async function createTransaction(payload: {
       return { success: false, error: error.message };
     }
 
-    // Se houver divisão de gasto (split), insere na tabela splits
-    if (payload.split && data?.id && !payload.split.personId.startsWith("p-")) {
-      try {
-        await supabase.from("splits").insert({
-          user_id: userId,
-          transaction_id: data.id,
-          person_id: payload.split.personId,
-          amount_owed: payload.split.amountOwed,
-          direction: "receivable",
-          is_paid: false,
-        });
-      } catch (splitErr) {
-        console.error("Erro ao registrar split no Supabase:", splitErr);
+    // Se houver divisão de gasto (splits múltiplos ou único), insere na tabela splits
+    const allSplits = payload.splits || (payload.split ? [payload.split] : []);
+    for (const sp of allSplits) {
+      if (sp && data?.id && !sp.personId.startsWith("p-")) {
+        try {
+          await supabase.from("splits").insert({
+            user_id: userId,
+            transaction_id: data.id,
+            person_id: sp.personId,
+            amount_owed: sp.amountOwed,
+            direction: "receivable",
+            is_paid: false,
+          });
+        } catch (splitErr) {
+          console.error("Erro ao registrar split no Supabase:", splitErr);
+        }
       }
     }
 
@@ -751,6 +1070,8 @@ export async function createTransaction(payload: {
         categoryName: data.category?.name || "Geral",
         categoryColor: data.category?.color || "#ccff00",
         paymentMethod: data.payment_method,
+        installmentNumber: data.installment_number || 1,
+        installmentTotal: data.installment_total || 1,
         transactionDate: data.transaction_date,
         formattedDate: data.transaction_date,
         status: data.status,

@@ -94,14 +94,14 @@ export function FloatingCofrinhoDock({
             type="button"
             onClick={onNavigateHome}
             aria-label="Início"
-            className={`p-2.5 transition-colors active:scale-90 cursor-pointer rounded-full ${
+            className={`transition-all duration-300 active:scale-95 cursor-pointer flex items-center justify-center ${
               activeTab === "home"
-                ? "text-lime-400 hover:text-lime-300"
-                : "text-zinc-400 hover:text-white"
+                ? "bg-[#1f2026] text-lime-400 px-4 py-2 rounded-full border border-white/10 shadow-inner"
+                : "p-2.5 text-zinc-400 hover:text-white rounded-full"
             }`}
           >
             <svg
-              className="w-6.5 h-6.5 stroke-[2.2]"
+              className="w-6 h-6 stroke-[2.2]"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -127,7 +127,7 @@ export function FloatingCofrinhoDock({
             type="button"
             onClick={onTransfer}
             aria-label="Extrato e atividades"
-            className={`transition-all active:scale-95 cursor-pointer flex items-center justify-center ${
+            className={`transition-all duration-300 active:scale-95 cursor-pointer flex items-center justify-center ${
               activeTab === "extrato"
                 ? "bg-[#1f2026] text-lime-400 px-4 py-2 rounded-full border border-white/10 shadow-inner"
                 : "p-2.5 text-zinc-300 hover:text-white rounded-full"

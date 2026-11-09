@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import Image from "next/image";
 import {
   ShoppingCart,
   Pill,
@@ -10,11 +9,25 @@ import {
   Utensils,
   Dumbbell,
   Heart,
-  Tag,
   CreditCard,
   ArrowUpRight,
   ArrowDownLeft,
-  CircleDollarSign,
+  Coffee,
+  Bike,
+  ShoppingBag,
+  Globe,
+  Smartphone,
+  Zap,
+  Wifi,
+  Wrench,
+  Fuel,
+  Bus,
+  Tv,
+  Gamepad2,
+  Plane,
+  Gift,
+  Briefcase,
+  Tag,
 } from "lucide-react";
 import { detectBrand, getGoogleFaviconUrl, getAvatarColor } from "@/lib/brands";
 
@@ -33,7 +46,7 @@ export function TransactionIcon({
   domain,
   type,
   className = "",
-  size = 40,
+  size = 48,
 }: TransactionIconProps) {
   const [imageError, setImageError] = useState(false);
 
@@ -41,20 +54,22 @@ export function TransactionIcon({
   const detectedBrand = detectBrand(title);
   const targetDomain = domain || detectedBrand?.domain;
 
-  // 2. Se tiver marca e a imagem ainda não falhou, renderiza o logo via Google Favicon API
+  // 2. Se tiver marca identificada e a imagem ainda não falhou, renderiza o logo oficial da empresa
   if (targetDomain && !imageError) {
     const faviconUrl = getGoogleFaviconUrl(targetDomain, 128);
+    const innerImgSize = Math.max(22, Math.floor(size * 0.58));
 
     return (
       <div
-        className={`relative flex items-center justify-center shrink-0 rounded-full bg-white/10 p-2 overflow-hidden border border-white/10 ${className}`}
+        className={`relative flex items-center justify-center shrink-0 rounded-full bg-[#1b1c22] border border-white/5 overflow-hidden shadow-inner ${className}`}
         style={{ width: size, height: size }}
-        title={`${title} (${targetDomain})`}
+        title={`${title} (${detectedBrand?.name || targetDomain})`}
       >
         <img
           src={faviconUrl}
           alt={title}
-          className="w-full h-full object-contain rounded-sm"
+          style={{ width: innerImgSize, height: innerImgSize }}
+          className="object-contain rounded-full"
           loading="lazy"
           onError={() => setImageError(true)}
         />
@@ -64,10 +79,11 @@ export function TransactionIcon({
 
   // 3. Fallback: Ícones de Objetos / Categorias
   const renderCategoryIcon = () => {
-    const iconSize = Math.max(16, Math.floor(size * 0.45));
-    const strokeWidth = 1.8;
+    const iconSize = Math.max(16, Math.floor(size * 0.44));
+    const strokeWidth = 2.0;
+    const cat = (categoryIcon || "").toLowerCase();
 
-    switch (categoryIcon?.toLowerCase()) {
+    switch (cat) {
       case "pix":
         return type === "income" ? (
           <ArrowDownLeft
@@ -89,17 +105,76 @@ export function TransactionIcon({
           <Pill
             size={iconSize}
             strokeWidth={strokeWidth}
-            className="text-red-400"
+            className="text-rose-400"
           />
         );
       case "cart":
       case "mercado":
+      case "supermercado":
       case "compras":
         return (
           <ShoppingCart
             size={iconSize}
             strokeWidth={strokeWidth}
-            className="text-amber-400"
+            className="text-orange-400"
+          />
+        );
+      case "coffee":
+      case "cafe":
+      case "bebida":
+        return (
+          <Coffee
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-orange-400"
+          />
+        );
+      case "food":
+      case "restaurante":
+      case "utensils":
+      case "comida":
+        return (
+          <Utensils
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-orange-400"
+          />
+        );
+      case "bike":
+      case "delivery":
+        return (
+          <Bike
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-orange-400"
+          />
+        );
+      case "bag":
+      case "shopping":
+        return (
+          <ShoppingBag
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-pink-400"
+          />
+        );
+      case "globe":
+      case "online":
+        return (
+          <Globe
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-pink-400"
+          />
+        );
+      case "smartphone":
+      case "eletron":
+      case "eletronicos":
+        return (
+          <Smartphone
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-pink-400"
           />
         );
       case "car":
@@ -107,6 +182,24 @@ export function TransactionIcon({
       case "uber":
         return (
           <Car
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-sky-400"
+          />
+        );
+      case "fuel":
+      case "combustivel":
+      case "gas":
+        return (
+          <Fuel
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-sky-400"
+          />
+        );
+      case "bus":
+        return (
+          <Bus
             size={iconSize}
             strokeWidth={strokeWidth}
             className="text-sky-400"
@@ -121,14 +214,31 @@ export function TransactionIcon({
             className="text-purple-400"
           />
         );
-      case "food":
-      case "restaurante":
-      case "comida":
+      case "tv":
+      case "cinema":
         return (
-          <Utensils
+          <Tv
             size={iconSize}
             strokeWidth={strokeWidth}
-            className="text-orange-400"
+            className="text-purple-400"
+          />
+        );
+      case "gamepad":
+      case "jogos":
+        return (
+          <Gamepad2
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-indigo-400"
+          />
+        );
+      case "plane":
+      case "viagem":
+        return (
+          <Plane
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-cyan-400"
           />
         );
       case "dumbbell":
@@ -138,7 +248,7 @@ export function TransactionIcon({
           <Dumbbell
             size={iconSize}
             strokeWidth={strokeWidth}
-            className="text-yellow-400"
+            className="text-amber-400"
           />
         );
       case "heart":
@@ -157,6 +267,60 @@ export function TransactionIcon({
             className="text-blue-400"
           />
         );
+      case "zap":
+      case "energia":
+      case "luz":
+        return (
+          <Zap
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-yellow-400"
+          />
+        );
+      case "wifi":
+      case "internet":
+        return (
+          <Wifi
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-blue-400"
+          />
+        );
+      case "wrench":
+      case "servico":
+        return (
+          <Wrench
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-zinc-400"
+          />
+        );
+      case "gift":
+        return (
+          <Gift
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-rose-400"
+          />
+        );
+      case "briefcase":
+      case "trabalho":
+      case "salario":
+        return (
+          <Briefcase
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-emerald-400"
+          />
+        );
+      case "tag":
+        return (
+          <Tag
+            size={iconSize}
+            strokeWidth={strokeWidth}
+            className="text-zinc-400"
+          />
+        );
       default:
         return null;
     }
@@ -166,7 +330,7 @@ export function TransactionIcon({
   if (categoryElement) {
     return (
       <div
-        className={`flex items-center justify-center shrink-0 rounded-full bg-white/5 border border-white/10 ${className}`}
+        className={`flex items-center justify-center shrink-0 rounded-full bg-[#1b1c22] border border-white/5 shadow-inner ${className}`}
         style={{ width: size, height: size }}
       >
         {categoryElement}
@@ -180,7 +344,7 @@ export function TransactionIcon({
 
   return (
     <div
-      className={`flex items-center justify-center shrink-0 rounded-full font-semibold text-white shadow-inner select-none ${className}`}
+      className={`flex items-center justify-center shrink-0 rounded-full font-bold text-white shadow-inner select-none ${className}`}
       style={{
         width: size,
         height: size,
