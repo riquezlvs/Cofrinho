@@ -98,7 +98,6 @@ type PeriodFilter =
   | "lastYear"
   | "custom";
 type SortOrder = "recent" | "oldest" | "highest" | "lowest";
-type OriginFilter = "open_finance" | "manual";
 
 interface CategoryItem {
   id: string;
@@ -502,10 +501,7 @@ const sortOptions: { id: SortOrder; label: string }[] = [
   { id: "lowest", label: "Menor valor" },
 ];
 
-const originOptions: { id: OriginFilter; label: string }[] = [
-  { id: "open_finance", label: "Open finance" },
-  { id: "manual", label: "Manuais" },
-];
+
 
 export function AccountBadge({
   tx,
@@ -686,9 +682,8 @@ export function ExtratoClient({
   const [selectedBankIds, setSelectedBankIds] = useState<string[]>([]);
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [selectedCategoryNames, setSelectedCategoryNames] = useState<string[]>([]);
-  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [isCategoryPickerForFilter, setIsCategoryPickerForFilter] = useState(false);
   const [sortOrder, setSortOrder] = useState<SortOrder>("recent");
-  const [selectedOrigins, setSelectedOrigins] = useState<OriginFilter[]>([]);
   const [showHidden, setShowHidden] = useState(false);
 
   // Categorias, contas e pessoas do banco de dados / fallback
@@ -720,49 +715,13 @@ export function ExtratoClient({
     return initialData.creditCards || [];
   }, [initialData.creditCards]);
 
-  // Lista de bancos disponíveis para o filtro (conforme imagem: Santander, Carteira Pierre, etc.)
+  // Lista de bancos disponíveis para o filtro: apenas os essenciais Santander e Nubank
   const filterBanksList = useMemo(() => {
-    const list: { id: string; name: string; type?: string; logo?: string }[] = [];
-    const seen = new Set<string>();
-
-    const presets = [
-      { id: "acc-santander", name: "Santander", type: "checking", logo: "santander" },
-      { id: "acc-carteira", name: "Carteira Pierre", type: "cash", logo: "carteira_pierre" },
+    return [
+      { id: "acc-santander", name: "Santander", logo: "santander" },
+      { id: "acc-nubank", name: "Nubank", logo: "nubank" },
     ];
-
-    presets.forEach((b) => {
-      seen.add(b.name.toLowerCase());
-      list.push(b);
-    });
-
-    (availableAccounts || []).forEach((acc) => {
-      const key = acc.name.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        list.push({
-          id: acc.id,
-          name: acc.name,
-          type: acc.type,
-          logo: getAccountLogoType(acc.name, undefined, acc.type),
-        });
-      }
-    });
-
-    transactions.forEach((tx) => {
-      const name = tx.accountName || tx.accountOrCard;
-      if (name && !seen.has(name.toLowerCase())) {
-        seen.add(name.toLowerCase());
-        list.push({
-          id: `acc-${name.toLowerCase().replace(/\s+/g, "-")}`,
-          name,
-          type: tx.accountType || "checking",
-          logo: getAccountLogoType(name, undefined, tx.paymentMethod),
-        });
-      }
-    });
-
-    return list;
-  }, [availableAccounts, transactions]);
+  }, []);
 
   const toggleBankFilter = (bankId: string) => {
     setSelectedBankIds((prev) =>
@@ -782,16 +741,17 @@ export function ExtratoClient({
     );
   };
 
-  const toggleOriginFilter = (origin: OriginFilter) => {
-    setSelectedOrigins((prev) =>
-      prev.includes(origin) ? prev.filter((o) => o !== origin) : [...prev, origin]
+  const filterVisibleCategories = useMemo(() => {
+    const base = filterCategoryPresets.slice(0, 8);
+    const extraNames = selectedCategoryNames.filter(
+      (name) => !base.some((b) => b.name.toLowerCase() === name.toLowerCase())
     );
-  };
-
-  const visibleCategories = useMemo(() => {
-    if (showAllCategories) return filterCategoryPresets;
-    return filterCategoryPresets.slice(0, 8);
-  }, [showAllCategories]);
+    const extras = extraNames.map((name) => {
+      const found = filterCategoryPresets.find((p) => p.name.toLowerCase() === name.toLowerCase());
+      return found || { id: `cat-${name}`, name, icon: Tag, color: "#ccff00" };
+    });
+    return [...base, ...extras];
+  }, [selectedCategoryNames]);
 
   // Lista de pessoas para rateio (splits)
   const [people, setPeople] = useState<Person[]>(
@@ -906,7 +866,12 @@ export function ExtratoClient({
 
   // Grupos de categorias filtrados pela busca
   const filteredCategoryGroups = useMemo(() => {
-    const groups = newType === "income" ? incomeCategoryGroups : expenseCategoryGroups;
+    const groups = isCategoryPickerForFilter
+      ? [...expenseCategoryGroups, ...incomeCategoryGroups]
+      : newType === "income"
+      ? incomeCategoryGroups
+      : expenseCategoryGroups;
+
     if (!searchCatQuery.trim()) return groups;
 
     const query = searchCatQuery.toLowerCase().trim();
@@ -929,7 +894,7 @@ export function ExtratoClient({
         return null;
       })
       .filter((g): g is CategoryGroup => g !== null);
-  }, [newType, searchCatQuery]);
+  }, [isCategoryPickerForFilter, newType, searchCatQuery]);
 
   // Campos específicos: Dividir gasto (Rachadinha / Split Múltiplo)
   const [isSplitEnabled, setIsSplitEnabled] = useState(false);
@@ -1077,7 +1042,6 @@ export function ExtratoClient({
     count += selectedBankIds.length;
     count += selectedCardIds.length;
     count += selectedCategoryNames.length;
-    count += selectedOrigins.length;
     if (showHidden) count += 1;
     return count;
   }, [
@@ -1087,7 +1051,6 @@ export function ExtratoClient({
     selectedBankIds,
     selectedCardIds,
     selectedCategoryNames,
-    selectedOrigins,
     showHidden,
   ]);
 
@@ -1109,7 +1072,6 @@ export function ExtratoClient({
     setSelectedCardIds([]);
     setSelectedCategoryNames([]);
     setSortOrder("recent");
-    setSelectedOrigins([]);
     setShowHidden(false);
   };
 
@@ -1212,20 +1174,21 @@ export function ExtratoClient({
           }
         }
 
-        // 4. Filtro por Bancos
+        // 4. Filtro por Bancos (Apenas Santander e Nubank)
         if (selectedBankIds.length > 0) {
           const txBankName = (tx.accountName || tx.accountOrCard || "").toLowerCase();
-          const txBankId = tx.accountId || "";
           const matchesBank = selectedBankIds.some((selectedId) => {
-            const b = filterBanksList.find((bank) => bank.id === selectedId);
-            if (!b) return false;
-            const bName = b.name.toLowerCase();
-            return (
-              txBankName.includes(bName) ||
-              bName.includes(txBankName) ||
-              txBankId === b.id ||
-              (bName.includes("carteira") && (txBankName.includes("carteira") || tx.paymentMethod === "cash"))
-            );
+            if (selectedId === "acc-santander") {
+              return txBankName.includes("santander");
+            }
+            if (selectedId === "acc-nubank") {
+              return (
+                txBankName.includes("nubank") ||
+                txBankName.includes("nu") ||
+                txBankName.includes("roxinho")
+              );
+            }
+            return false;
           });
           if (!matchesBank) return false;
         }
@@ -1292,16 +1255,6 @@ export function ExtratoClient({
           if (!matchesCategory) return false;
         }
 
-        // 7. Filtro por Origem
-        if (selectedOrigins.length > 0) {
-          const isOF =
-            tx.origin === "open_finance" ||
-            tx.id.toLowerCase().includes("of") ||
-            (tx.accountName && tx.accountName.toLowerCase().includes("santander"));
-          const txOrigin: OriginFilter = isOF ? "open_finance" : "manual";
-          if (!selectedOrigins.includes(txOrigin)) return false;
-        }
-
         return true;
       })
       .sort((a, b) => {
@@ -1325,9 +1278,7 @@ export function ExtratoClient({
     selectedCardIds,
     selectedCategoryNames,
     sortOrder,
-    selectedOrigins,
     showHidden,
-    filterBanksList,
     availableCards,
   ]);
 
@@ -1896,22 +1847,23 @@ export function ExtratoClient({
 
       {/* TELA DE NOVA TRANSAÇÃO */}
       {isNewTxModalOpen && (
-        <div className="absolute inset-0 z-50 bg-[#09090b] flex flex-col justify-between p-5 sm:p-6 text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-y-auto no-scrollbar">
-          <div className="flex flex-col gap-4">
-            {/* Header: Título centralizado + botão fechar X circular */}
-            <div className="relative flex items-center justify-center pt-2 pb-1">
-              <h2 className="text-base sm:text-[17px] font-bold text-white tracking-tight">
-                Nova transação
-              </h2>
-              <button
-                type="button"
-                onClick={() => setIsNewTxModalOpen(false)}
-                className="absolute right-0 w-9 h-9 rounded-full bg-[#27262c] hover:bg-[#34333b] flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col h-[100dvh] sm:h-full max-h-[100dvh] text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden">
+          {/* Header fixo no topo */}
+          <div className="shrink-0 px-5 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/[0.08] relative flex items-center justify-center bg-[#09090b] z-10">
+            <h2 className="text-base sm:text-[17px] font-bold text-white tracking-tight">
+              Nova transação
+            </h2>
+            <button
+              type="button"
+              onClick={() => setIsNewTxModalOpen(false)}
+              className="absolute right-5 sm:right-6 w-9 h-9 rounded-full bg-[#27262c] hover:bg-[#34333b] flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
 
+          {/* Corpo do formulário com scroll suave */}
+          <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 flex flex-col gap-4 no-scrollbar">
             {/* Segmented Pill: Saída (⊖ Saída) vs Entrada (⊕ Entrada) */}
             <div className="w-full bg-[#141418] p-1 rounded-full flex items-center border border-white/[0.08]">
               <button
@@ -2582,13 +2534,13 @@ export function ExtratoClient({
             </div>
           </div>
 
-          {/* Botão de ação inferior: "Adicionar transação" */}
-          <div className="pt-6 pb-2">
+          {/* Botão de ação inferior SEMPRE visível na altura do celular (sem precisar rolar) */}
+          <div className="shrink-0 p-4 sm:p-5 pb-[max(1rem,env(safe-area-inset-bottom))] bg-[#09090b] border-t border-white/[0.08] z-10 shadow-[0_-8px_20px_rgba(0,0,0,0.6)]">
             <button
               type="button"
               onClick={handleSaveTransaction}
               disabled={!canSubmitTransaction}
-              className={`w-full py-4 rounded-full font-semibold text-base transition-all active:scale-[0.98] cursor-pointer shadow-lg flex items-center justify-center gap-2 ${
+              className={`w-full py-3.5 sm:py-4 rounded-full font-semibold text-base transition-all active:scale-[0.98] cursor-pointer shadow-lg flex items-center justify-center gap-2 ${
                 canSubmitTransaction
                   ? "bg-[#d4d4d8] hover:bg-white text-black"
                   : "bg-[#27272a] text-zinc-500 cursor-not-allowed"
@@ -2616,6 +2568,7 @@ export function ExtratoClient({
               onClick={() => {
                 setIsCategoryPickerOpen(false);
                 setIsEditingSelectedTxCategory(false);
+                setIsCategoryPickerForFilter(false);
               }}
               className="w-10 h-10 rounded-full bg-[#1c1c22] border border-white/5 hover:bg-[#25252c] flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition cursor-pointer"
               aria-label="Fechar"
@@ -2677,14 +2630,23 @@ export function ExtratoClient({
                   {/* Subcategorias com ícone em círculo escuro e checkbox arredondado */}
                   <div className="divide-y divide-white/[0.04]">
                     {group.items.map((item) => {
-                      const isSelected =
-                        selectedCategoryName.toLowerCase() === item.name.toLowerCase() ||
-                        newCategoryId === item.id;
+                      const isSelected = isCategoryPickerForFilter
+                        ? selectedCategoryNames.some(
+                            (n) => n.toLowerCase() === item.name.toLowerCase()
+                          )
+                        : isEditingSelectedTxCategory
+                        ? selectedTx?.categoryName?.toLowerCase() === item.name.toLowerCase()
+                        : selectedCategoryName.toLowerCase() === item.name.toLowerCase() ||
+                          newCategoryId === item.id;
 
                       return (
                         <div
                           key={item.id}
                           onClick={() => {
+                            if (isCategoryPickerForFilter) {
+                              toggleCategoryFilter(item.name);
+                              return;
+                            }
                             if (isEditingSelectedTxCategory && selectedTx) {
                               const updatedTx = {
                                 ...selectedTx,
@@ -2725,7 +2687,7 @@ export function ExtratoClient({
                           <div
                             className={`w-5.5 h-5.5 rounded-[6px] border flex items-center justify-center transition-all ${
                               isSelected
-                                ? "bg-[#ccff00] border-[#ccff00] text-black shadow-sm"
+                                ? "bg-white border-white text-black shadow-sm"
                                 : "border-zinc-700 bg-transparent group-hover:border-zinc-500"
                             }`}
                           >
@@ -2739,14 +2701,30 @@ export function ExtratoClient({
               ))
             )}
           </div>
+
+          {/* Footer quando aberto a partir do filtro: Concluir seleção */}
+          {isCategoryPickerForFilter && (
+            <div className="shrink-0 pt-3 pb-1 border-t border-white/[0.06] bg-[#09090b]">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCategoryPickerOpen(false);
+                  setIsCategoryPickerForFilter(false);
+                }}
+                className="w-full py-3.5 rounded-full bg-white text-black font-bold text-sm sm:text-base hover:bg-zinc-200 active:scale-[0.98] transition shadow-lg cursor-pointer flex items-center justify-center gap-2"
+              >
+                Concluir {selectedCategoryNames.length > 0 ? `(${selectedCategoryNames.length})` : ""}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {/* Modal / Tela de Filtros - Adaptado fielmente às imagens de referência */}
       {isFilterSheetOpen && (
-        <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col justify-between text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden">
+        <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col justify-between text-white animate-in slide-in-from-bottom duration-300 sm:rounded-[44px] overflow-hidden w-full h-full min-h-screen sm:min-h-0">
           {/* Header com Título Filtros e botão circular X à direita */}
-          <div className="flex items-center justify-between px-5 sm:px-6 pt-5 pb-2 shrink-0">
+          <div className="flex items-center justify-between px-5 sm:px-6 pt-[max(1.25rem,env(safe-area-inset-top))] pb-2 shrink-0">
             <h2 className="text-2xl sm:text-[28px] font-bold tracking-tight text-white">
               Filtros
             </h2>
@@ -2761,7 +2739,7 @@ export function ExtratoClient({
           </div>
 
           {/* Conteúdo com Scroll vertical */}
-          <div className="flex-1 overflow-y-auto no-scrollbar px-5 sm:px-6 py-2 space-y-6">
+          <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-5 sm:px-6 py-2 space-y-6">
             {/* 1. SEÇÃO: Período */}
             <div className="space-y-3">
               <h3 className="text-[15px] font-semibold text-white">
@@ -2837,19 +2815,9 @@ export function ExtratoClient({
                       <div className="flex items-center gap-3">
                         {bank.logo === "santander" ? (
                           <SantanderIcon className="w-8 h-8" />
-                        ) : bank.logo === "carteira_pierre" ? (
-                          <CarteiraPierreIcon className="w-8 h-8" />
-                        ) : bank.logo === "nubank" ? (
+                        ) : (
                           <div className="w-8 h-8 rounded-full bg-[#820AD1] flex items-center justify-center shrink-0 shadow-sm">
                             <span className="text-[11px] font-black text-white">Nu</span>
-                          </div>
-                        ) : bank.logo === "vr" ? (
-                          <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center shrink-0 shadow-sm">
-                            <Utensils className="w-4 h-4 text-white" />
-                          </div>
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-zinc-800 border border-white/10 flex items-center justify-center shrink-0 text-xs font-bold text-white shadow-sm">
-                            {bank.name[0]?.toUpperCase() || "B"}
                           </div>
                         )}
                         <span className="text-sm sm:text-[15px] font-medium text-zinc-200 group-hover:text-white transition">
@@ -2922,8 +2890,10 @@ export function ExtratoClient({
                 Categoria
               </h3>
               <div className="flex flex-wrap gap-2">
-                {visibleCategories.map((cat) => {
-                  const isSelected = selectedCategoryNames.includes(cat.name);
+                {filterVisibleCategories.map((cat) => {
+                  const isSelected = selectedCategoryNames.some(
+                    (n) => n.toLowerCase() === cat.name.toLowerCase()
+                  );
                   const Icon = cat.icon;
                   return (
                     <button
@@ -2946,20 +2916,18 @@ export function ExtratoClient({
                 })}
               </div>
 
-              {filterCategoryPresets.length > 8 && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllCategories((prev) => !prev)}
-                  className="text-xs sm:text-sm text-zinc-400 hover:text-white flex items-center gap-1 pt-1 transition cursor-pointer"
-                >
-                  <span>{showAllCategories ? "Mostrar menos" : "Mostrar mais"}</span>
-                  <ChevronRight
-                    className={`w-3.5 h-3.5 transition-transform ${
-                      showAllCategories ? "-rotate-90" : "rotate-0"
-                    }`}
-                  />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCategoryPickerForFilter(true);
+                  setSearchCatQuery("");
+                  setIsCategoryPickerOpen(true);
+                }}
+                className="text-xs sm:text-sm text-zinc-400 hover:text-white flex items-center gap-1 pt-1 transition cursor-pointer"
+              >
+                <span>Mostrar mais</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             </div>
 
             {/* 5. SEÇÃO: Ordenar por */}
@@ -2975,32 +2943,6 @@ export function ExtratoClient({
                       key={opt.id}
                       type="button"
                       onClick={() => setSortOrder(opt.id)}
-                      className={`px-4 py-2 rounded-full text-xs sm:text-sm font-medium border transition-all active:scale-95 cursor-pointer ${
-                        isSelected
-                          ? "bg-white text-black border-white font-semibold shadow-sm"
-                          : "bg-[#141418] border-zinc-800 text-zinc-300 hover:border-zinc-700"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 6. SEÇÃO: Origem */}
-            <div className="space-y-3">
-              <h3 className="text-[15px] font-semibold text-white">
-                Origem
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {originOptions.map((opt) => {
-                  const isSelected = selectedOrigins.includes(opt.id);
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => toggleOriginFilter(opt.id)}
                       className={`px-4 py-2 rounded-full text-xs sm:text-sm font-medium border transition-all active:scale-95 cursor-pointer ${
                         isSelected
                           ? "bg-white text-black border-white font-semibold shadow-sm"
@@ -3042,7 +2984,7 @@ export function ExtratoClient({
           </div>
 
           {/* Footer Fixo: Mostrar resultados & Limpar tudo */}
-          <div className="shrink-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/98 to-transparent pt-3 pb-6 px-5 sm:px-6 flex flex-col items-center gap-2 border-t border-white/[0.06]">
+          <div className="shrink-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/98 to-transparent pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] px-5 sm:px-6 flex flex-col items-center gap-2 border-t border-white/[0.06]">
             <button
               type="button"
               onClick={() => setIsFilterSheetOpen(false)}
@@ -3137,7 +3079,7 @@ export function ExtratoClient({
         };
 
         return (
-          <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col overflow-y-auto px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(6rem,env(safe-area-inset-bottom))] text-white animate-in slide-in-from-right duration-200 select-none sm:rounded-[44px] w-full h-full min-h-screen sm:min-h-0">
+          <div className="fixed inset-0 sm:absolute sm:inset-0 z-50 bg-[#09090b] flex flex-col overflow-y-auto px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(4rem,env(safe-area-inset-bottom))] text-white animate-in slide-in-from-right duration-200 select-none sm:rounded-[44px] w-full h-[100dvh] max-h-[100dvh]">
             {/* Top Bar: Voltar (<) na esquerda • Lixeira + Editar transação na direita */}
             <div className="flex items-center justify-between w-full pt-1 pb-3">
               <button
@@ -3410,8 +3352,9 @@ export function ExtratoClient({
             {/* Modal: Editar Transação */}
             {isEditTxModalOpen && (
               <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
-                <div className="w-full max-w-full sm:max-w-[420px] bg-[#141418] border border-white/10 rounded-t-[32px] sm:rounded-[32px] p-6 text-white shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom">
-                  <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                <div className="w-full max-w-full sm:max-w-[420px] max-h-[85dvh] sm:max-h-[80vh] bg-[#141418] border border-white/10 rounded-t-[32px] sm:rounded-[32px] p-5 sm:p-6 text-white shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom">
+                  {/* Header fixo */}
+                  <div className="shrink-0 flex items-center justify-between pb-3 border-b border-white/10">
                     <h3 className="text-base font-bold text-white">Editar Transação</h3>
                     <button
                       type="button"
@@ -3422,7 +3365,8 @@ export function ExtratoClient({
                     </button>
                   </div>
 
-                  <div className="flex flex-col gap-3">
+                  {/* Formulário com scroll interno se necessário */}
+                  <div className="flex-1 overflow-y-auto py-3.5 flex flex-col gap-3.5 no-scrollbar">
                     <div>
                       <label className="text-xs text-zinc-400 font-medium mb-1 block">Título da compra</label>
                       <input
@@ -3468,7 +3412,8 @@ export function ExtratoClient({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-2">
+                  {/* Botões de Ação Fixos no rodapé */}
+                  <div className="shrink-0 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-white/10 flex items-center gap-2 bg-[#141418]">
                     <button
                       type="button"
                       onClick={() => setIsEditTxModalOpen(false)}
