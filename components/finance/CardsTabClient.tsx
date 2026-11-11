@@ -134,7 +134,7 @@ export function CardsTabClient({
   const [formColor, setFormColor] = useState("#820ad1");
   const [formIsDefault, setFormIsDefault] = useState(false);
 
-  // Travar o scroll da página de fundo quando qualquer modal de cartão estiver aberto
+  // Travar o scroll da página de fundo quando qualquer modal de cartão estiver aberto e suportar voltar/ESC
   useEffect(() => {
     if (isModalOpen || cardToDelete !== null) {
       document.body.style.overflow = "hidden";
@@ -143,7 +143,29 @@ export function CardsTabClient({
       document.body.style.overflow = "";
       document.documentElement.style.overflow = "";
     }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsModalOpen(false);
+        setCardToDelete(null);
+        document.body.style.overflow = "";
+        document.documentElement.style.overflow = "";
+      }
+    };
+
+    const handlePopState = () => {
+      setIsModalOpen(false);
+      setCardToDelete(null);
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("popstate", handlePopState);
+
     return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("popstate", handlePopState);
       document.body.style.overflow = "";
       document.documentElement.style.overflow = "";
     };

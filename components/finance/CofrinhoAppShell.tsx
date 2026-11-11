@@ -55,15 +55,32 @@ export function CofrinhoAppShell({
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname;
-      if (path.includes("extrato") || path.includes("atividades")) {
-        setCurrentTab("extrato");
-      } else {
-        setCurrentTab("home");
+      const targetTab =
+        path.includes("extrato") || path.includes("atividades") ? "extrato" : "home";
+      setCurrentTab(targetTab);
+
+      // Garante o desbloqueio do scroll da página
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+
+      // Se voltar para a home, reseta a flag de overlay para nunca ocultar o navbar na home
+      if (targetTab === "home") {
+        setIsExtratoOverlayOpen(false);
       }
+
+      // Restaura o scroll salvo da aba correspondente
+      const targetScroll = targetTab === "home" ? homeScrollRef.current : extratoScrollRef.current;
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: targetScroll, behavior: "instant" });
+      });
     };
 
     window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+    };
   }, []);
 
   return (
@@ -112,7 +129,7 @@ export function CofrinhoAppShell({
         <div
           className={`w-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
             currentTab === "home"
-              ? "opacity-100 translate-y-0 visible relative"
+              ? "opacity-100 transform-none visible relative"
               : "opacity-0 translate-y-2 pointer-events-none absolute top-0 left-0 w-full invisible h-0 overflow-hidden"
           }`}
         >
@@ -131,7 +148,7 @@ export function CofrinhoAppShell({
         <div
           className={`w-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
             currentTab === "extrato"
-              ? "opacity-100 translate-y-0 visible relative"
+              ? "opacity-100 transform-none visible relative"
               : "opacity-0 translate-y-2 pointer-events-none absolute top-0 left-0 w-full invisible h-0 overflow-hidden"
           }`}
         >
@@ -148,9 +165,9 @@ export function CofrinhoAppShell({
         </div>
       </div>
 
-      {/* Floating Liquid Glass Dock FIXO e PERMANENTE (oculto quando qualquer modal/overlay estiver aberto) */}
+      {/* Floating Liquid Glass Dock FIXO e PERMANENTE (oculto apenas quando algum modal estiver aberto na aba de extrato) */}
       <FloatingCofrinhoDock
-        hidden={isExtratoOverlayOpen}
+        hidden={currentTab === "extrato" && isExtratoOverlayOpen}
         activeTab={currentTab}
         onNavigateHome={() => handleSwitchTab("home")}
         onTransfer={() => handleSwitchTab("extrato")}

@@ -73,6 +73,7 @@ import {
 } from "@/app/actions/transactions";
 import { addMonths, formatLongPortugueseDate } from "@/lib/dateUtils";
 import { getGoogleFaviconUrl } from "@/lib/brands";
+import { Portal } from "@/components/ui/Portal";
 
 export interface ExtratoClientProps {
   initialData: ExtratoData;
@@ -663,7 +664,16 @@ export function ExtratoClient({
   const [isNewTxModalOpen, setIsNewTxModalOpen] = useState(false);
   const [isCategoryPickerOpen, setIsCategoryPickerOpen] = useState(false);
   const [searchCatQuery, setSearchCatQuery] = useState("");
-  const [selectedTx, setSelectedTx] = useState<ExtratoTransaction | null>(null);
+  const [selectedTx, setSelectedTx] = useState<ExtratoTransaction | null>(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const txId = urlParams.get("tx");
+      if (txId && initialData.transactions) {
+        return initialData.transactions.find((t) => t.id === txId) || null;
+      }
+    }
+    return null;
+  });
   const [isEditingSelectedTxCategory, setIsEditingSelectedTxCategory] = useState(false);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [isEditTxModalOpen, setIsEditTxModalOpen] = useState(false);
@@ -672,6 +682,84 @@ export function ExtratoClient({
   const [editTxDate, setEditTxDate] = useState("");
   const [editTxTime, setEditTxTime] = useState("");
   const [editTxPaymentMethod, setEditTxPaymentMethod] = useState<string>("credit");
+
+  const handleOpenTransactionDetail = (tx: ExtratoTransaction) => {
+    setSelectedTx(tx);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tx", tx.id);
+      window.history.pushState({ modal: "txDetail", txId: tx.id }, "", url.toString());
+    }
+  };
+
+  const handleCloseTransactionDetail = () => {
+    setSelectedTx(null);
+    setIsEditTxModalOpen(false);
+    setIsConfirmDeleteOpen(false);
+    setIsCategoryPickerOpen(false);
+    setIsEditingSelectedTxCategory(false);
+    document.body.style.overflow = "";
+    document.documentElement.style.overflow = "";
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("tx")) {
+        url.searchParams.delete("tx");
+        window.history.replaceState({}, "", url.toString());
+      }
+    }
+  };
+
+  // Suporte ao botão voltar do celular/navegador e tecla Escape
+  useEffect(() => {
+    const handlePopState = () => {
+      setIsConfirmDeleteOpen(false);
+      setIsEditTxModalOpen(false);
+      setIsCategoryPickerOpen(false);
+      setIsEditingSelectedTxCategory(false);
+      setIsFilterSheetOpen(false);
+      setIsNewTxModalOpen(false);
+      setSelectedTx(null);
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (isConfirmDeleteOpen) {
+          setIsConfirmDeleteOpen(false);
+        } else if (isEditTxModalOpen) {
+          setIsEditTxModalOpen(false);
+        } else if (isCategoryPickerOpen) {
+          setIsCategoryPickerOpen(false);
+          setIsEditingSelectedTxCategory(false);
+        } else if (isFilterSheetOpen) {
+          setIsFilterSheetOpen(false);
+        } else if (selectedTx) {
+          handleCloseTransactionDetail();
+        } else if (isNewTxModalOpen) {
+          setIsNewTxModalOpen(false);
+        }
+        document.body.style.overflow = "";
+        document.documentElement.style.overflow = "";
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+    };
+  }, [
+    selectedTx,
+    isConfirmDeleteOpen,
+    isEditTxModalOpen,
+    isCategoryPickerOpen,
+    isFilterSheetOpen,
+    isNewTxModalOpen,
+  ]);
 
   // Estado unificado de overlays para ocultar o navbar flutuante e travar a página de baixo
   const isAnyOverlayOpen = Boolean(
@@ -1770,7 +1858,7 @@ export function ExtratoClient({
                     return (
                       <div
                         key={tx.id}
-                        onClick={() => setSelectedTx(tx)}
+                        onClick={() => handleOpenTransactionDetail(tx)}
                         className="flex items-center justify-between py-2.5 cursor-pointer group active:opacity-75 transition select-none"
                       >
                         {/* Lado Esquerdo: Ícone com Badge da Conta/Banco */}
@@ -1870,8 +1958,10 @@ export function ExtratoClient({
 
       {/* TELA DE NOVA TRANSAÇÃO */}
       {isNewTxModalOpen && (
-        <div className="fixed inset-0 z-[75] bg-black flex flex-col h-[100dvh] max-h-[100dvh] text-white animate-in slide-in-from-bottom duration-300 overflow-hidden select-none">
-          {/* Header fixo no topo */}
+        <Portal>
+          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex justify-center overflow-hidden select-none">
+            <div className="w-full max-w-full sm:max-w-[460px] h-[100dvh] max-h-[100dvh] bg-black text-white flex flex-col animate-in slide-in-from-bottom duration-300 overflow-hidden sm:border-x sm:border-white/10 sm:shadow-2xl relative">
+              {/* Header fixo no topo */}
           <div className="shrink-0 px-5 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/[0.08] relative flex items-center justify-center bg-black z-10">
             <h2 className="text-base sm:text-[17px] font-bold text-white tracking-tight">
               Nova transação
@@ -2579,12 +2669,16 @@ export function ExtratoClient({
             </button>
           </div>
         </div>
-      )}
+      </div>
+    </Portal>
+  )}
 
       {/* TELA DE SELEÇÃO DE CATEGORIAS (Fiel à imagem em anexo) */}
       {isCategoryPickerOpen && (
-        <div className="fixed inset-0 z-[95] bg-black flex flex-col p-5 sm:p-6 text-white animate-in slide-in-from-bottom duration-300 overflow-hidden pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] select-none">
-          {/* Header com botão Fechar X circular na direita */}
+        <Portal>
+          <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex justify-center overflow-hidden select-none">
+            <div className="w-full max-w-full sm:max-w-[460px] h-[100dvh] max-h-[100dvh] bg-black text-white flex flex-col p-5 sm:p-6 animate-in slide-in-from-bottom duration-300 overflow-hidden pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] sm:border-x sm:border-white/10 sm:shadow-2xl relative">
+              {/* Header com botão Fechar X circular na direita */}
           <div className="flex items-center justify-end pt-1 pb-3">
             <button
               type="button"
@@ -2741,12 +2835,16 @@ export function ExtratoClient({
             </div>
           )}
         </div>
-      )}
+      </div>
+    </Portal>
+  )}
 
       {/* Modal / Tela de Filtros - Adaptado fielmente às imagens de referência */}
       {isFilterSheetOpen && (
-        <div className="fixed inset-0 z-[80] bg-black flex flex-col justify-between text-white animate-in slide-in-from-bottom duration-300 overflow-hidden w-full h-[100dvh] max-h-[100dvh] select-none">
-          {/* Header Fixo com Título Filtros e botão circular X à direita */}
+        <Portal>
+          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex justify-center overflow-hidden select-none">
+            <div className="w-full max-w-full sm:max-w-[460px] h-[100dvh] max-h-[100dvh] bg-black text-white flex flex-col justify-between animate-in slide-in-from-bottom duration-300 overflow-hidden sm:border-x sm:border-white/10 sm:shadow-2xl relative">
+              {/* Header Fixo com Título Filtros e botão circular X à direita */}
           <div className="flex items-center justify-between px-5 sm:px-6 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3 shrink-0 bg-black border-b border-white/[0.08] z-20">
             <h2 className="text-2xl sm:text-[28px] font-bold tracking-tight text-white">
               Filtros
@@ -3024,7 +3122,9 @@ export function ExtratoClient({
             </button>
           </div>
         </div>
-      )}
+      </div>
+    </Portal>
+  )}
 
       {/* TELA DE DETALHES DA TRANSAÇÃO (Fiel à imagem em anexo) */}
       {selectedTx && (() => {
@@ -3087,7 +3187,7 @@ export function ExtratoClient({
         const handleDeleteTx = async () => {
           const txId = selectedTx.id;
           setTransactions((prev) => prev.filter((t) => t.id !== txId));
-          setSelectedTx(null);
+          handleCloseTransactionDetail();
           setIsConfirmDeleteOpen(false);
           await deleteTransactionAction(txId);
         };
@@ -3102,17 +3202,19 @@ export function ExtratoClient({
         };
 
         return (
-          <div className="fixed inset-0 z-[75] bg-black flex flex-col text-white animate-in slide-in-from-right duration-200 select-none w-full h-[100dvh] max-h-[100dvh] overflow-hidden">
-            {/* Top Bar Fixo no topo com botões arredondados e liquid glass */}
-            <div className="shrink-0 flex items-center justify-between w-full px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/[0.08] bg-black z-20">
-              <button
-                type="button"
-                onClick={() => setSelectedTx(null)}
-                aria-label="Voltar"
-                className="w-11 h-11 rounded-full liquid-glass-btn flex items-center justify-center text-white active:scale-95 transition cursor-pointer shadow-md"
-              >
-                <ChevronLeft className="w-5 h-5 stroke-[2.4]" />
-              </button>
+          <Portal>
+            <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex justify-center overflow-hidden select-none">
+              <div className="w-full max-w-full sm:max-w-[460px] h-[100dvh] max-h-[100dvh] bg-black text-white flex flex-col animate-in slide-in-from-right duration-200 overflow-hidden sm:border-x sm:border-white/10 sm:shadow-2xl relative">
+                {/* Top Bar Fixo no topo com botões arredondados e liquid glass */}
+                <div className="shrink-0 flex items-center justify-between w-full px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/[0.08] bg-black z-20">
+                  <button
+                    type="button"
+                    onClick={handleCloseTransactionDetail}
+                    aria-label="Voltar"
+                    className="w-11 h-11 rounded-full liquid-glass-btn flex items-center justify-center text-white active:scale-95 transition cursor-pointer shadow-md"
+                  >
+                    <ChevronLeft className="w-5 h-5 stroke-[2.4]" />
+                  </button>
 
               <div className="flex items-center gap-2.5">
                 <button
@@ -3341,7 +3443,7 @@ export function ExtratoClient({
 
             {/* Modal de Confirmação de Exclusão */}
             {isConfirmDeleteOpen && (
-              <div className="fixed inset-0 z-[95] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+              <div className="fixed inset-0 z-[130] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
                 <div className="w-full max-w-sm bg-[#141418] border border-rose-500/30 rounded-[32px] p-6 flex flex-col gap-4 text-white shadow-2xl">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0 shadow-md">
@@ -3377,20 +3479,21 @@ export function ExtratoClient({
 
             {/* Tela Completa 100% OPACA: Editar Transação (Não vaza a tela de baixo e permite rolar até o fim) */}
             {isEditTxModalOpen && (
-              <div className="fixed inset-0 z-[90] bg-black flex flex-col text-white animate-in slide-in-from-bottom duration-200 select-none w-full h-[100dvh] max-h-[100dvh] overflow-hidden">
-                {/* Header Fixo */}
-                <div className="shrink-0 flex items-center justify-between w-full px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/[0.08] bg-black z-20">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditTxModalOpen(false)}
-                    aria-label="Voltar"
-                    className="w-11 h-11 rounded-full liquid-glass-btn flex items-center justify-center text-white active:scale-95 transition cursor-pointer shadow-md"
-                  >
-                    <ChevronLeft className="w-5 h-5 stroke-[2.4]" />
-                  </button>
-                  <h3 className="text-base sm:text-lg font-black text-white">Editar Transação</h3>
-                  <div className="w-11 h-11" />
-                </div>
+              <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm flex justify-center overflow-hidden select-none">
+                <div className="w-full max-w-full sm:max-w-[460px] h-[100dvh] max-h-[100dvh] bg-black text-white flex flex-col animate-in slide-in-from-bottom duration-200 overflow-hidden sm:border-x sm:border-white/10 sm:shadow-2xl relative">
+                  {/* Header Fixo */}
+                  <div className="shrink-0 flex items-center justify-between w-full px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/[0.08] bg-black z-20">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditTxModalOpen(false)}
+                      aria-label="Voltar"
+                      className="w-11 h-11 rounded-full liquid-glass-btn flex items-center justify-center text-white active:scale-95 transition cursor-pointer shadow-md"
+                    >
+                      <ChevronLeft className="w-5 h-5 stroke-[2.4]" />
+                    </button>
+                    <h3 className="text-base sm:text-lg font-black text-white">Editar Transação</h3>
+                    <div className="w-11 h-11" />
+                  </div>
 
                 {/* Formulário com Scroll independente até o fim */}
                 <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-4 no-scrollbar pb-36">
@@ -3512,10 +3615,13 @@ export function ExtratoClient({
                   </button>
                 </div>
               </div>
-            )}
+            </div>
+          )}
           </div>
-        );
-      })()}
+        </div>
+      </Portal>
+    );
+  })()}
     </>
   );
 
