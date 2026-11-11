@@ -16,11 +16,11 @@ export interface FluxoDeCaixaClientProps {
 type TabType = "geral" | "entradas" | "saidas";
 type PeriodType = "mes" | "3m" | "6m" | "1a";
 
-interface DailyPoint {
-  dayNumber: number;
-  formattedDay: string; // "01", "02", ...
-  dateStr: string; // "YYYY-MM-DD"
-  formattedDate: string; // "08 de novembro"
+interface TimelinePoint {
+  id: string;
+  label: string; // "01", "02" para dias; "SET", "OUT" para meses
+  fullLabel: string; // "08 de novembro" ou "Outubro de 2026"
+  dateKey: string; // "2026-11-08" ou "2026-10"
   income: number;
   expense: number;
   net: number;
@@ -41,6 +41,21 @@ const MONTH_NAMES = [
   "Outubro",
   "Novembro",
   "Dezembro",
+];
+
+const MONTH_SHORTS = [
+  "JAN",
+  "FEV",
+  "MAR",
+  "ABR",
+  "MAI",
+  "JUN",
+  "JUL",
+  "AGO",
+  "SET",
+  "OUT",
+  "NOV",
+  "DEZ",
 ];
 
 export function FluxoDeCaixaClient({
@@ -77,55 +92,96 @@ export function FluxoDeCaixaClient({
   const now = useMemo(() => new Date(), []);
   const currentMonthName = MONTH_NAMES[now.getMonth()];
 
-  // Montagem da Linha do Tempo diária para "Este mês"
-  const dailyData: DailyPoint[] = useMemo(() => {
+  // Montagem da Linha do Tempo conforme o período selecionado (Este mês, 3m, 6m, 1a)
+  const timelineData: TimelinePoint[] = useMemo(() => {
     const year = now.getFullYear();
     const month = now.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-    const points: DailyPoint[] = [];
+    if (activePeriod === "mes") {
+      // Dias do mês atual (ex: 01 a 30 de Novembro)
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const points: TimelinePoint[] = [];
 
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dayStr = String(d).padStart(2, "0");
-      const monthStr = String(month + 1).padStart(2, "0");
-      const dateStr = `${year}-${monthStr}-${dayStr}`;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dayStr = String(d).padStart(2, "0");
+        const monthStr = String(month + 1).padStart(2, "0");
+        const dateStr = `${year}-${monthStr}-${dayStr}`;
 
-      // Filtrar transações deste dia
-      const dayTxs = transactions.filter((t) => {
+        const dayTxs = transactions.filter((t) => {
+          if (!t.transactionDate) return false;
+          return t.transactionDate.startsWith(dateStr);
+        });
+
+        const dayIncome = dayTxs
+          .filter((t) => t.type === "income")
+          .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+        const dayExpense = dayTxs
+          .filter((t) => t.type === "expense")
+          .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+        points.push({
+          id: `day-${d}`,
+          label: dayStr,
+          fullLabel: `${dayStr} de ${MONTH_NAMES[month].toLowerCase()}`,
+          dateKey: dateStr,
+          income: dayIncome,
+          expense: dayExpense,
+          net: dayIncome - dayExpense,
+          hasActivity: dayIncome > 0 || dayExpense > 0,
+          transactions: dayTxs,
+        });
+      }
+
+      return points;
+    }
+
+    // Se activePeriod for "3m", "6m" ou "1a": agrupa mensalmente
+    const monthsCount = activePeriod === "3m" ? 3 : activePeriod === "6m" ? 6 : 12;
+    const points: TimelinePoint[] = [];
+
+    for (let i = monthsCount - 1; i >= 0; i--) {
+      const d = new Date(year, month - i, 1);
+      const targetYear = d.getFullYear();
+      const targetMonth = d.getMonth();
+      const monthStr = String(targetMonth + 1).padStart(2, "0");
+      const prefix = `${targetYear}-${monthStr}`;
+
+      const monthTxs = transactions.filter((t) => {
         if (!t.transactionDate) return false;
-        return t.transactionDate.startsWith(dateStr);
+        return t.transactionDate.startsWith(prefix);
       });
 
-      const dayIncome = dayTxs
+      const mIncome = monthTxs
         .filter((t) => t.type === "income")
         .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
-      const dayExpense = dayTxs
+      const mExpense = monthTxs
         .filter((t) => t.type === "expense")
         .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
       points.push({
-        dayNumber: d,
-        formattedDay: dayStr,
-        dateStr,
-        formattedDate: `${dayStr} de ${MONTH_NAMES[month].toLowerCase()}`,
-        income: dayIncome,
-        expense: dayExpense,
-        net: dayIncome - dayExpense,
-        hasActivity: dayIncome > 0 || dayExpense > 0,
-        transactions: dayTxs,
+        id: `month-${prefix}`,
+        label: MONTH_SHORTS[targetMonth],
+        fullLabel: `${MONTH_NAMES[targetMonth]} de ${targetYear}`,
+        dateKey: prefix,
+        income: mIncome,
+        expense: mExpense,
+        net: mIncome - mExpense,
+        hasActivity: mIncome > 0 || mExpense > 0,
+        transactions: monthTxs,
       });
     }
 
     return points;
-  }, [transactions, now]);
+  }, [transactions, now, activePeriod]);
 
-  // Totais do período
+  // Totais do período ativo
   const totals = useMemo(() => {
     let income = 0;
     let expense = 0;
 
-    for (const p of dailyData) {
+    for (const p of timelineData) {
       income += p.income;
       expense += p.expense;
     }
@@ -135,17 +191,25 @@ export function FluxoDeCaixaClient({
       expense,
       balance: income - expense,
     };
-  }, [dailyData]);
+  }, [timelineData]);
+
+  // Título dinâmico do período (ex: "em Novembro", "nos últimos 3 meses", etc.)
+  const periodTitle = useMemo(() => {
+    if (activePeriod === "mes") return `em ${currentMonthName}`;
+    if (activePeriod === "3m") return "nos últimos 3 meses";
+    if (activePeriod === "6m") return "nos últimos 6 meses";
+    return "no último ano";
+  }, [activePeriod, currentMonthName]);
 
   // Ponto atualmente selecionado pelo dedo (scrubbed)
-  const currentPoint = selectedDayIndex !== null ? dailyData[selectedDayIndex] : null;
+  const currentPoint = selectedDayIndex !== null ? timelineData[selectedDayIndex] : null;
 
-  // Valor a ser exibido no Hero dependendo da aba e do dia selecionado
+  // Valor a ser exibido no Hero dependendo da aba e do ponto selecionado
   const displayValues = useMemo(() => {
     if (currentPoint) {
       if (activeTab === "entradas") {
         return {
-          title: `Entradas em ${currentPoint.formattedDate}`,
+          title: `Entradas em ${currentPoint.fullLabel}`,
           amountText: `R$ ${formatCurrency(currentPoint.income)}`,
           isPositive: true,
           income: currentPoint.income,
@@ -154,7 +218,7 @@ export function FluxoDeCaixaClient({
       }
       if (activeTab === "saidas") {
         return {
-          title: `Saídas em ${currentPoint.formattedDate}`,
+          title: `Saídas em ${currentPoint.fullLabel}`,
           amountText: `-R$ ${formatCurrency(currentPoint.expense)}`,
           isPositive: false,
           income: 0,
@@ -163,7 +227,7 @@ export function FluxoDeCaixaClient({
       }
       // Geral
       return {
-        title: `Fluxo em ${currentPoint.formattedDate}`,
+        title: `Fluxo em ${currentPoint.fullLabel}`,
         amountText: `${currentPoint.net < 0 ? "-" : ""}R$ ${formatCurrency(currentPoint.net)}`,
         isPositive: currentPoint.net >= 0,
         income: currentPoint.income,
@@ -171,10 +235,10 @@ export function FluxoDeCaixaClient({
       };
     }
 
-    // Visão Geral do Mês
+    // Visão Geral do Período
     if (activeTab === "entradas") {
       return {
-        title: `Entradas em ${currentMonthName}`,
+        title: `Entradas ${periodTitle}`,
         amountText: `R$ ${formatCurrency(totals.income)}`,
         isPositive: true,
         income: totals.income,
@@ -183,7 +247,7 @@ export function FluxoDeCaixaClient({
     }
     if (activeTab === "saidas") {
       return {
-        title: `Saídas em ${currentMonthName}`,
+        title: `Saídas ${periodTitle}`,
         amountText: `-R$ ${formatCurrency(totals.expense)}`,
         isPositive: false,
         income: 0,
@@ -191,21 +255,31 @@ export function FluxoDeCaixaClient({
       };
     }
     return {
-      title: `Fluxo geral em ${currentMonthName}`,
+      title: `Fluxo geral ${periodTitle}`,
       amountText: `${totals.balance < 0 ? "-" : ""}R$ ${formatCurrency(totals.balance)}`,
       isPositive: totals.balance >= 0,
       income: totals.income,
       expense: totals.expense,
     };
-  }, [currentPoint, activeTab, currentMonthName, totals]);
+  }, [currentPoint, activeTab, periodTitle, totals]);
 
-  // Lista de transações filtradas conforme a aba ativa e o dia selecionado
+  // Lista de transações filtradas conforme a aba ativa, período e o ponto selecionado
   const filteredTransactions = useMemo(() => {
     let list = transactions;
 
-    // Se houver um dia selecionado via gráfico, prioriza apenas aquele dia
+    // Se houver um ponto selecionado via gráfico, prioriza apenas aquele ponto
     if (currentPoint) {
       list = currentPoint.transactions;
+    } else {
+      // Se nenhum ponto selecionado, filtra pelo período ativo (mes, 3m, 6m, 1a)
+      const validDateKeys = new Set(timelineData.map((p) => p.dateKey));
+      list = list.filter((t) => {
+        if (!t.transactionDate) return false;
+        if (activePeriod === "mes") {
+          return validDateKeys.has(t.transactionDate.substring(0, 10));
+        }
+        return validDateKeys.has(t.transactionDate.substring(0, 7));
+      });
     }
 
     // Filtrar por aba
@@ -216,7 +290,13 @@ export function FluxoDeCaixaClient({
     }
 
     return list;
-  }, [transactions, currentPoint, activeTab]);
+  }, [transactions, currentPoint, activeTab, activePeriod, timelineData]);
+
+  // Troca de Período com reset do ponto selecionado
+  const handleSelectPeriod = (newPeriod: PeriodType) => {
+    setActivePeriod(newPeriod);
+    setSelectedDayIndex(null);
+  };
 
   // Scroll listener para animação do header colapsável
   useEffect(() => {
@@ -229,16 +309,21 @@ export function FluxoDeCaixaClient({
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Centralizar o scroll da linha do tempo nos dias que possuem atividade no carregamento
+  // Centralizar o scroll da linha do tempo nos pontos que possuem atividade ou no final do período
   useEffect(() => {
-    const activeIdx = dailyData.findIndex((p) => p.hasActivity);
-    if (activeIdx !== -1 && itemRefs.current[activeIdx] && chartScrollRef.current) {
-      const el = itemRefs.current[activeIdx];
+    // Reseta referências de itens ao trocar período
+    itemRefs.current = itemRefs.current.slice(0, timelineData.length);
+
+    const activeIdx = timelineData.findIndex((p) => p.hasActivity);
+    const targetIdx = activeIdx !== -1 ? activeIdx : timelineData.length - 1;
+
+    if (itemRefs.current[targetIdx] && chartScrollRef.current) {
+      const el = itemRefs.current[targetIdx];
       const container = chartScrollRef.current;
       const left = el.offsetLeft - container.clientWidth / 2 + el.clientWidth / 2;
       container.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
     }
-  }, [dailyData]);
+  }, [timelineData, activePeriod]);
 
   // Touch Scrubbing Engine: Calcula qual barra está sob o ponteiro em tempo real
   const handlePointerScrub = useCallback(
@@ -294,6 +379,15 @@ export function FluxoDeCaixaClient({
   const onPointerUpChart = () => {
     setIsDragging(false);
   };
+
+  const maxTimelineVal = useMemo(() => {
+    return Math.max(
+      ...timelineData.map((p) =>
+        Math.abs(activeTab === "entradas" ? p.income : activeTab === "saidas" ? p.expense : p.net)
+      ),
+      1
+    );
+  }, [timelineData, activeTab]);
 
   return (
     <div className="w-full flex-1 flex flex-col relative min-h-screen text-white select-none">
@@ -393,7 +487,7 @@ export function FluxoDeCaixaClient({
                 className="flex items-center gap-1 text-[11px] font-semibold text-lime-400 hover:text-lime-300 transition-colors cursor-pointer"
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>Ver mês todo</span>
+                <span>{activePeriod === "mes" ? "Ver mês todo" : "Ver período todo"}</span>
               </button>
             )}
           </div>
@@ -434,12 +528,12 @@ export function FluxoDeCaixaClient({
             </span>
             {currentPoint && (
               <span className="text-white font-semibold bg-white/10 px-2 py-0.5 rounded-full">
-                {currentPoint.formattedDate}
+                {currentPoint.fullLabel}
               </span>
             )}
           </div>
 
-          {/* Carrossel de Barras Diárias com Suporte a Toque */}
+          {/* Carrossel de Barras com Suporte a Toque (Dias no Mês ou Meses nos períodos 3m, 6m, 1a) */}
           <div
             ref={chartScrollRef}
             onTouchStart={onTouchStartChart}
@@ -448,19 +542,49 @@ export function FluxoDeCaixaClient({
             onPointerDown={onPointerDownChart}
             onPointerMove={onPointerMoveChart}
             onPointerUp={onPointerUpChart}
-            className="w-full overflow-x-auto pb-3 pt-4 px-2 flex items-end gap-3 scrollbar-none touch-pan-x cursor-grab active:cursor-grabbing border-y border-white/[0.06] bg-zinc-950/40 rounded-2xl"
+            className={`w-full overflow-x-auto pb-3 pt-4 px-2 flex items-end ${
+              activePeriod === "3m"
+                ? "justify-around gap-6"
+                : activePeriod === "6m"
+                ? "justify-around gap-3"
+                : "gap-3"
+            } scrollbar-none touch-pan-x cursor-grab active:cursor-grabbing border-y border-white/[0.06] bg-zinc-950/40 rounded-2xl`}
           >
-            {dailyData.map((point, index) => {
+            {timelineData.map((point, index) => {
               const isSelected = selectedDayIndex === index;
               const hasActivity = point.hasActivity;
 
-              // Determinar aparência da barra
               const isPositive = point.net >= 0;
               const isExpenseOnly = point.expense > 0 && point.income === 0;
 
+              // Largura da barra conforme o período selecionado
+              const barWidthClass =
+                activePeriod === "3m"
+                  ? "w-8 sm:w-10"
+                  : activePeriod === "6m"
+                  ? "w-6 sm:w-7"
+                  : activePeriod === "1a"
+                  ? "w-4 sm:w-5"
+                  : "w-3.5";
+
+              // Altura proporcional para períodos de 3m, 6m, 1a ou altura padrão no mês
+              const val = Math.abs(
+                activeTab === "entradas"
+                  ? point.income
+                  : activeTab === "saidas"
+                  ? point.expense
+                  : point.net
+              );
+              const customHeightPx =
+                activePeriod === "mes"
+                  ? isExpenseOnly || (!isPositive && activeTab !== "entradas")
+                    ? 28
+                    : 32
+                  : Math.max(22, Math.min(52, Math.round((val / maxTimelineVal) * 52)));
+
               return (
                 <div
-                  key={point.dayNumber}
+                  key={point.id}
                   ref={(el) => {
                     itemRefs.current[index] = el;
                   }}
@@ -485,9 +609,9 @@ export function FluxoDeCaixaClient({
                     )}
 
                     {!hasActivity ? (
-                      /* Dias Vazios: Cápsula Tracejada Cinza como na Foto 2 */
+                      /* Período/Dia Vazio: Cápsula Tracejada Cinza como na Foto 2 */
                       <div
-                        className={`w-3.5 h-5 rounded-full border border-dashed flex items-center justify-center transition-colors ${
+                        className={`${barWidthClass} h-5 rounded-full border border-dashed flex items-center justify-center transition-colors ${
                           isSelected
                             ? "border-white bg-white/10"
                             : "border-zinc-700/60 bg-transparent text-zinc-600"
@@ -496,27 +620,29 @@ export function FluxoDeCaixaClient({
                         <span className="text-[7px] leading-none text-zinc-600 font-mono">00</span>
                       </div>
                     ) : isExpenseOnly || (!isPositive && activeTab !== "entradas") ? (
-                      /* Dia com Saída: Barra Vermelha Sólida como o dia 08 na Foto 2 */
+                      /* Barra Vermelha Sólida (Saída / Déficit) */
                       <div
-                        className={`w-3.5 h-7 bg-[#ff5252] rounded-full shadow-[0_0_8px_rgba(255,82,82,0.5)] transition-all ${
+                        className={`${barWidthClass} bg-[#ff5252] rounded-full shadow-[0_0_8px_rgba(255,82,82,0.5)] transition-all ${
                           isSelected ? "ring-2 ring-white ring-offset-1 ring-offset-black" : ""
                         }`}
+                        style={{ height: `${customHeightPx}px` }}
                         title={`Saída: R$ ${formatCurrency(point.expense)}`}
                       />
                     ) : (
-                      /* Dia com Entrada: Barra Verde Neon Sólida */
+                      /* Barra Verde Neon Sólida (Entrada / Superávit) */
                       <div
-                        className={`w-3.5 h-8 bg-[#ccff00] rounded-full shadow-[0_0_8px_rgba(204,255,0,0.5)] transition-all ${
+                        className={`${barWidthClass} bg-[#ccff00] rounded-full shadow-[0_0_8px_rgba(204,255,0,0.5)] transition-all ${
                           isSelected ? "ring-2 ring-white ring-offset-1 ring-offset-black" : ""
                         }`}
+                        style={{ height: `${customHeightPx}px` }}
                         title={`Entrada: R$ ${formatCurrency(point.income)}`}
                       />
                     )}
                   </div>
 
-                  {/* Número do Dia */}
+                  {/* Rótulo do Dia (01, 02...) ou do Mês (SET, OUT, NOV...) */}
                   <span
-                    className={`text-[11px] font-semibold transition-colors ${
+                    className={`text-[10px] sm:text-[11px] font-semibold transition-colors ${
                       isSelected
                         ? "text-white font-bold"
                         : hasActivity
@@ -524,19 +650,19 @@ export function FluxoDeCaixaClient({
                         : "text-zinc-500"
                     }`}
                   >
-                    {point.formattedDay}
+                    {point.label}
                   </span>
                 </div>
               );
             })}
           </div>
 
-          {/* Filtros de Período (Este mês, 3m, 6m, 1a) exatamente como na Foto 2 */}
+          {/* Filtros de Período (Este mês, 3m, 6m, 1a) com recálculo em tempo real */}
           <div className="w-full flex justify-center pt-2">
             <div className="flex items-center gap-1.5 p-1 bg-zinc-900/90 rounded-full border border-white/10 shadow-inner">
               <button
                 type="button"
-                onClick={() => setActivePeriod("mes")}
+                onClick={() => handleSelectPeriod("mes")}
                 className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer ${
                   activePeriod === "mes"
                     ? "bg-white text-black shadow-md"
@@ -547,7 +673,7 @@ export function FluxoDeCaixaClient({
               </button>
               <button
                 type="button"
-                onClick={() => setActivePeriod("3m")}
+                onClick={() => handleSelectPeriod("3m")}
                 className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer ${
                   activePeriod === "3m"
                     ? "bg-white text-black shadow-md"
@@ -558,7 +684,7 @@ export function FluxoDeCaixaClient({
               </button>
               <button
                 type="button"
-                onClick={() => setActivePeriod("6m")}
+                onClick={() => handleSelectPeriod("6m")}
                 className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer ${
                   activePeriod === "6m"
                     ? "bg-white text-black shadow-md"
@@ -569,7 +695,7 @@ export function FluxoDeCaixaClient({
               </button>
               <button
                 type="button"
-                onClick={() => setActivePeriod("1a")}
+                onClick={() => handleSelectPeriod("1a")}
                 className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer ${
                   activePeriod === "1a"
                     ? "bg-white text-black shadow-md"
@@ -587,7 +713,7 @@ export function FluxoDeCaixaClient({
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-zinc-300">
               {currentPoint
-                ? `Lançamentos de ${currentPoint.formattedDate}`
+                ? `Lançamentos de ${currentPoint.fullLabel}`
                 : "Últimos lançamentos"}
             </h2>
             <span className="text-[11px] text-zinc-500 font-medium">
