@@ -3,11 +3,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { DashboardClient } from "@/components/finance/DashboardClient";
 import { ExtratoClient } from "@/components/finance/ExtratoClient";
+import { FluxoDeCaixaClient } from "@/components/finance/FluxoDeCaixaClient";
 import { FloatingCofrinhoDock } from "@/components/finance/FloatingCofrinhoDock";
 import { DashboardData, ExtratoData } from "@/types/finance";
 
 export interface CofrinhoAppShellProps {
-  initialTab?: "home" | "extrato";
+  initialTab?: "home" | "extrato" | "fluxo";
   initialDashboardData: DashboardData;
   initialExtratoData: ExtratoData;
 }
@@ -17,15 +18,16 @@ export function CofrinhoAppShell({
   initialDashboardData,
   initialExtratoData,
 }: CofrinhoAppShellProps) {
-  const [currentTab, setCurrentTab] = useState<"home" | "extrato">(initialTab);
+  const [currentTab, setCurrentTab] = useState<"home" | "extrato" | "fluxo">(initialTab);
   const [isPrivacyHidden, setIsPrivacyHidden] = useState(false);
   const [isExtratoOverlayOpen, setIsExtratoOverlayOpen] = useState(false);
 
   // Armazena a posição de rolagem de cada aba para manter o contexto do usuário
   const homeScrollRef = useRef(0);
   const extratoScrollRef = useRef(0);
+  const fluxoScrollRef = useRef(0);
 
-  const handleSwitchTab = (newTab: "home" | "extrato") => {
+  const handleSwitchTab = (newTab: "home" | "extrato" | "fluxo") => {
     if (newTab === currentTab) {
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
@@ -34,18 +36,26 @@ export function CofrinhoAppShell({
     // Salva scroll da aba atual
     if (currentTab === "home") {
       homeScrollRef.current = window.scrollY;
-    } else {
+    } else if (currentTab === "extrato") {
       extratoScrollRef.current = window.scrollY;
+    } else {
+      fluxoScrollRef.current = window.scrollY;
     }
 
     setCurrentTab(newTab);
 
     // Atualiza a URL no navegador sem acionar desmontagem ou reload de página
-    const targetPath = newTab === "extrato" ? "/extrato" : "/";
+    const targetPath =
+      newTab === "extrato" ? "/extrato" : newTab === "fluxo" ? "/fluxo" : "/";
     window.history.pushState({ tab: newTab }, "", targetPath);
 
     // Restaura o scroll salvo da nova aba suavemente
-    const targetScroll = newTab === "home" ? homeScrollRef.current : extratoScrollRef.current;
+    const targetScroll =
+      newTab === "home"
+        ? homeScrollRef.current
+        : newTab === "extrato"
+        ? extratoScrollRef.current
+        : fluxoScrollRef.current;
     requestAnimationFrame(() => {
       window.scrollTo({ top: targetScroll, behavior: "instant" });
     });
@@ -55,21 +65,29 @@ export function CofrinhoAppShell({
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname;
-      const targetTab =
-        path.includes("extrato") || path.includes("atividades") ? "extrato" : "home";
+      const targetTab = path.includes("fluxo")
+        ? "fluxo"
+        : path.includes("extrato") || path.includes("atividades")
+        ? "extrato"
+        : "home";
       setCurrentTab(targetTab);
 
       // Garante o desbloqueio do scroll da página
       document.body.style.overflow = "";
       document.documentElement.style.overflow = "";
 
-      // Se voltar para a home, reseta a flag de overlay para nunca ocultar o navbar na home
-      if (targetTab === "home") {
+      // Se voltar para a home ou fluxo, reseta a flag de overlay
+      if (targetTab !== "extrato") {
         setIsExtratoOverlayOpen(false);
       }
 
       // Restaura o scroll salvo da aba correspondente
-      const targetScroll = targetTab === "home" ? homeScrollRef.current : extratoScrollRef.current;
+      const targetScroll =
+        targetTab === "home"
+          ? homeScrollRef.current
+          : targetTab === "extrato"
+          ? extratoScrollRef.current
+          : fluxoScrollRef.current;
       requestAnimationFrame(() => {
         window.scrollTo({ top: targetScroll, behavior: "instant" });
       });
@@ -139,6 +157,7 @@ export function CofrinhoAppShell({
             isPrivacyHidden={isPrivacyHidden}
             onTogglePrivacy={() => setIsPrivacyHidden((prev) => !prev)}
             onNavigateToExtrato={() => handleSwitchTab("extrato")}
+            onNavigateToFluxo={() => handleSwitchTab("fluxo")}
             onAskCofrinho={() => console.log("Pergunte ao Pierre")}
             onOpenMascot={() => console.log("Mascote Pierre")}
           />
@@ -163,12 +182,29 @@ export function CofrinhoAppShell({
             onOverlayChange={setIsExtratoOverlayOpen}
           />
         </div>
+
+        {/* View da Tela de Fluxo de Caixa */}
+        <div
+          className={`w-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            currentTab === "fluxo"
+              ? "opacity-100 transform-none visible relative"
+              : "opacity-0 translate-y-2 pointer-events-none absolute top-0 left-0 w-full invisible h-0 overflow-hidden"
+          }`}
+        >
+          <FluxoDeCaixaClient
+            initialExtratoData={initialExtratoData}
+            isPrivacyHidden={isPrivacyHidden}
+            onTogglePrivacy={() => setIsPrivacyHidden((prev) => !prev)}
+            onNavigateHome={() => handleSwitchTab("home")}
+            onNavigateToExtrato={() => handleSwitchTab("extrato")}
+          />
+        </div>
       </div>
 
-      {/* Floating Liquid Glass Dock FIXO e PERMANENTE (oculto apenas quando algum modal estiver aberto na aba de extrato) */}
+      {/* Floating Liquid Glass Dock FIXO e PERMANENTE (oculto na aba de fluxo e quando modal estiver aberto na aba de extrato) */}
       <FloatingCofrinhoDock
-        hidden={currentTab === "extrato" && isExtratoOverlayOpen}
-        activeTab={currentTab}
+        hidden={currentTab === "fluxo" || (currentTab === "extrato" && isExtratoOverlayOpen)}
+        activeTab={currentTab === "fluxo" ? "home" : currentTab}
         onNavigateHome={() => handleSwitchTab("home")}
         onTransfer={() => handleSwitchTab("extrato")}
         onAskCofrinho={() => console.log("Pergunte ao Pierre")}

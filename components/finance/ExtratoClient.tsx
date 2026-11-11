@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Eye,
@@ -64,14 +64,14 @@ import {
 } from "lucide-react";
 import { FloatingCofrinhoDock } from "@/components/finance/FloatingCofrinhoDock";
 import { TransactionIcon } from "@/components/finance/TransactionIcon";
-import { ExtratoData, ExtratoTransaction, InstallmentScheduleItem, Person } from "@/types/finance";
+import { ExtratoData, ExtratoTransaction, InstallmentScheduleItem, Person, TransactionSplit } from "@/types/finance";
 import {
   addTransactionAction,
   createPersonAction,
   deleteTransactionAction,
   updateTransactionAction,
 } from "@/app/actions/transactions";
-import { addMonths, formatLongPortugueseDate } from "@/lib/dateUtils";
+import { addMonths, formatLongPortugueseDate, formatMediumPortugueseDate } from "@/lib/dateUtils";
 import { getGoogleFaviconUrl } from "@/lib/brands";
 import { Portal } from "@/components/ui/Portal";
 
@@ -549,7 +549,7 @@ export function AccountBadge({
         <img
           src={faviconUrl}
           alt={config.name}
-          className="w-full h-full object-contain rounded-full"
+          className="w-full h-full object-cover rounded-full"
           loading="lazy"
           onError={() => setImgError(true)}
         />
@@ -682,6 +682,24 @@ export function ExtratoClient({
   const [editTxDate, setEditTxDate] = useState("");
   const [editTxTime, setEditTxTime] = useState("");
   const [editTxPaymentMethod, setEditTxPaymentMethod] = useState<string>("credit");
+  const [editTxIsHidden, setEditTxIsHidden] = useState(false);
+  const [editTxIsFixed, setEditTxIsFixed] = useState(false);
+  const [editTxCategoryName, setEditTxCategoryName] = useState("");
+  const [editTxCategoryIcon, setEditTxCategoryIcon] = useState("cart");
+  const [editTxCategoryColor, setEditTxCategoryColor] = useState("#ccff00");
+  const [editTxCategoryId, setEditTxCategoryId] = useState("");
+  const [isEditingEditTxCategory, setIsEditingEditTxCategory] = useState(false);
+  const editDatePickerRef = useRef<HTMLInputElement>(null);
+
+  // Estados de edição avançada: Parcelas e Divisão (Splits)
+  const [editTxInstallmentTotal, setEditTxInstallmentTotal] = useState<number>(1);
+  const [editTxTotalCentsAmount, setEditTxTotalCentsAmount] = useState<number>(0);
+  const [editTxApplyToAll, setEditTxApplyToAll] = useState<boolean>(true);
+  const [editTxIsSplitEnabled, setEditTxIsSplitEnabled] = useState<boolean>(false);
+  const [editTxPersonIds, setEditTxPersonIds] = useState<string[]>([]);
+  const [editTxIsRegisteringPerson, setEditTxIsRegisteringPerson] = useState<boolean>(false);
+  const [editTxNewPersonName, setEditTxNewPersonName] = useState("");
+  const [editTxNewPersonPix, setEditTxNewPersonPix] = useState("");
 
   const handleOpenTransactionDetail = (tx: ExtratoTransaction) => {
     setSelectedTx(tx);
@@ -2685,6 +2703,7 @@ export function ExtratoClient({
               onClick={() => {
                 setIsCategoryPickerOpen(false);
                 setIsEditingSelectedTxCategory(false);
+                setIsEditingEditTxCategory(false);
                 setIsCategoryPickerForFilter(false);
               }}
               className="w-10 h-10 rounded-full liquid-glass-btn flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition cursor-pointer"
@@ -2751,6 +2770,8 @@ export function ExtratoClient({
                         ? selectedCategoryNames.some(
                             (n) => n.toLowerCase() === item.name.toLowerCase()
                           )
+                        : isEditingEditTxCategory
+                        ? editTxCategoryName.toLowerCase() === item.name.toLowerCase()
                         : isEditingSelectedTxCategory
                         ? selectedTx?.categoryName?.toLowerCase() === item.name.toLowerCase()
                         : selectedCategoryName.toLowerCase() === item.name.toLowerCase() ||
@@ -2762,6 +2783,15 @@ export function ExtratoClient({
                           onClick={() => {
                             if (isCategoryPickerForFilter) {
                               toggleCategoryFilter(item.name);
+                              return;
+                            }
+                            if (isEditingEditTxCategory) {
+                              setEditTxCategoryName(item.name);
+                              setEditTxCategoryColor(item.color);
+                              setEditTxCategoryIcon(item.iconName);
+                              setEditTxCategoryId(item.id.startsWith("sub-") ? "" : item.id);
+                              setIsEditingEditTxCategory(false);
+                              setIsCategoryPickerOpen(false);
                               return;
                             }
                             if (isEditingSelectedTxCategory && selectedTx) {
@@ -3176,11 +3206,29 @@ export function ExtratoClient({
 
         const handleStartEdit = () => {
           setEditTxTitle(selectedTx.title);
+          const instTotal = selectedTx.installmentTotal || 1;
+          const totalVal = selectedTx.originalTotalAmount || selectedTx.amount * instTotal;
           setEditTxCentsAmount(Math.round(selectedTx.amount * 100));
+          setEditTxTotalCentsAmount(Math.round(totalVal * 100));
+          setEditTxInstallmentTotal(instTotal);
+          setEditTxApplyToAll(true);
           const rawDate = selectedTx.transactionDate || "";
           setEditTxDate(rawDate.includes("T") ? rawDate.split("T")[0] : rawDate || "2026-11-08");
           setEditTxTime(rawDate.includes("T") ? rawDate.split("T")[1]?.slice(0, 5) || "12:00" : "12:00");
           setEditTxPaymentMethod(selectedTx.paymentMethod || "credit");
+          setEditTxIsHidden(Boolean(selectedTx.isHidden));
+          setEditTxIsFixed(Boolean(selectedTx.isFixed));
+          setEditTxCategoryName(selectedTx.categoryName || "Geral");
+          setEditTxCategoryIcon(selectedTx.categoryIcon || "cart");
+          setEditTxCategoryColor(selectedTx.categoryColor || "#ccff00");
+          setEditTxCategoryId(selectedTx.categoryId || "");
+          setIsEditingEditTxCategory(false);
+          const existingSplits = selectedTx.splits || [];
+          setEditTxIsSplitEnabled(existingSplits.length > 0);
+          setEditTxPersonIds(existingSplits.map((s) => s.personId));
+          setEditTxIsRegisteringPerson(false);
+          setEditTxNewPersonName("");
+          setEditTxNewPersonPix("");
           setIsEditTxModalOpen(true);
         };
 
@@ -3250,19 +3298,54 @@ export function ExtratoClient({
               <AccountBadge tx={selectedTx} customClasses="w-7 h-7 -bottom-1 -right-1" />
             </div>
 
+            {/* Badge de Compra Parcelada em destaque */}
+            {hasInstallments && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-300 text-xs font-semibold mt-3 w-fit">
+                <Layers className="w-3.5 h-3.5 stroke-[2.2]" />
+                <span>Compra parcelada em {totalInst}x</span>
+              </div>
+            )}
+
             {/* Título da Transação */}
-            <h2 className="text-xl sm:text-2xl font-bold text-white mt-4 tracking-tight leading-snug">
+            <h2 className="text-xl sm:text-2xl font-bold text-white mt-3 tracking-tight leading-snug">
               {selectedTx.title}
             </h2>
 
-            {/* Valor Grande */}
-            <div
-              className={`text-3xl sm:text-[34px] font-extrabold text-white mt-1 tracking-tight font-sans ${
-                isPrivacyHidden ? "balance-blur" : ""
-              }`}
-            >
-              {selectedTx.type === "income" ? "+ " : ""}R$ {formatCurrency(selectedTx.amount)}
+            {/* Valor Grande (Valor da parcela se for parcelado) */}
+            <div className="flex items-baseline gap-2 mt-1">
+              <div
+                className={`text-3xl sm:text-[34px] font-extrabold text-white tracking-tight font-sans ${
+                  isPrivacyHidden ? "balance-blur" : ""
+                }`}
+              >
+                {selectedTx.type === "income" ? "+ " : ""}R$ {formatCurrency(selectedTx.amount)}
+              </div>
+              {hasInstallments && (
+                <span className="text-xs sm:text-sm font-semibold text-zinc-400 font-sans">
+                  / parcela
+                </span>
+              )}
             </div>
+
+            {/* Cartão de Destaque: Valor Total da Compra Parcelada */}
+            {hasInstallments && (
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#1b1c22]/70 border border-white/10 mt-2">
+                <div className="flex flex-col">
+                  <span className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider">
+                    Valor total da compra
+                  </span>
+                  <span className={`text-lg font-bold text-white font-sans ${isPrivacyHidden ? "balance-blur" : ""}`}>
+                    R$ {formatCurrency(totalValue)}
+                  </span>
+                </div>
+                <div className="text-right flex flex-col items-end">
+                  <span className="text-[11px] font-medium text-zinc-400">Progresso</span>
+                  <span className="text-xs font-semibold text-amber-300">
+                    Parcela {currentInst} de {totalInst} ({Math.round((currentInst / totalInst) * 100)}%)
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Data por Extenso (ex: Domingo, 8 de novembro de 2026) */}
             <p className="text-sm text-zinc-400 mt-1 capitalize leading-relaxed">
@@ -3329,7 +3412,7 @@ export function ExtratoClient({
 
               {/* Parcelamento (se houver) */}
               {hasInstallments && (
-                <div className="flex flex-col gap-3 pt-3 border-t border-white/5">
+                <div className="flex flex-col gap-3 pt-4 border-t border-white/5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3.5 min-w-0">
                       <div className="w-11 h-11 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0 shadow-inner">
@@ -3344,24 +3427,59 @@ export function ExtratoClient({
                     </div>
                   </div>
 
+                  {/* Barra de progresso visual */}
+                  <div className="flex flex-col gap-1.5 px-1 mt-1">
+                    <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                      <span>Progresso do parcelamento</span>
+                      <span className="text-amber-300 font-semibold">{currentInst}/{totalInst} parcelas</span>
+                    </div>
+                    <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-amber-500 to-amber-300 h-full rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(100, Math.round((currentInst / totalInst) * 100))}%` }}
+                      />
+                    </div>
+                  </div>
+
                   {/* Cronograma de Parcelas */}
                   {scheduleList.length > 0 && (
-                    <div className="p-3 rounded-2xl bg-black/40 border border-white/5 flex flex-col gap-2">
-                      <span className="text-[11px] font-semibold text-zinc-400">Próximos vencimentos:</span>
-                      <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto no-scrollbar">
+                    <div className="p-3.5 rounded-2xl bg-black/40 border border-white/5 flex flex-col gap-2.5 mt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Cronograma de parcelas</span>
+                        <span className="text-[11px] text-zinc-500">{scheduleList.length} parcelas</span>
+                      </div>
+                      <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto no-scrollbar">
                         {scheduleList.map((item) => {
                           const isCurrent = item.number === currentInst;
+                          const isPaid = item.number < currentInst;
                           return (
                             <div
                               key={item.number}
-                              className={`flex items-center justify-between py-1.5 px-2.5 rounded-xl text-xs ${
+                              className={`flex items-center justify-between py-2 px-3 rounded-xl text-xs transition-colors ${
                                 isCurrent
                                   ? "bg-amber-400/15 border border-amber-400/30 text-amber-200 font-semibold"
-                                  : "bg-white/[0.02] border border-white/5 text-zinc-400"
+                                  : isPaid
+                                  ? "bg-white/[0.02] border border-white/5 text-zinc-400"
+                                  : "bg-white/[0.01] border border-dashed border-white/10 text-zinc-500"
                               }`}
                             >
-                              <span>Parcela {item.number}/{item.total}</span>
-                              <span className="font-mono">{item.formattedDate}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">Parcela {item.number}/{item.total}</span>
+                                {isCurrent && (
+                                  <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300">
+                                    Atual
+                                  </span>
+                                )}
+                                {isPaid && (
+                                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">
+                                    Paga
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="font-mono text-zinc-300">{item.formattedDate}</span>
+                                <span className="font-sans font-semibold text-white">R$ {formatCurrency(item.amount)}</span>
+                              </div>
                             </div>
                           );
                         })}
@@ -3373,15 +3491,69 @@ export function ExtratoClient({
 
               {/* Dividir Gasto (se houver) */}
               {selectedTx.splits && selectedTx.splits.length > 0 && (
-                <div className="flex items-center justify-between pt-3 border-t border-white/5">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-11 h-11 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
-                      <Users className="w-5 h-5" />
+                <div className="flex flex-col gap-3 pt-4 border-t border-white/5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="w-11 h-11 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+                        <Users className="w-5 h-5" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs text-zinc-400">Divisão de gastos (Rateio)</span>
+                        <span className="text-sm font-semibold text-white truncate">
+                          Dividido com {selectedTx.splits.length} pessoa{selectedTx.splits.length > 1 ? "s" : ""}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-xs text-zinc-400">Dividir gasto</span>
-                      <span className="text-sm font-semibold text-white truncate">
-                        Dividido com {selectedTx.splits.length} pessoa{selectedTx.splits.length > 1 ? "s" : ""}
+                  </div>
+
+                  {/* Cartão detalhado dos amigos com quem foi dividido */}
+                  <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/5 flex flex-col gap-2.5">
+                    <div className="flex items-center justify-between text-xs pb-2 border-b border-white/5 text-zinc-400">
+                      <span>Participantes ({selectedTx.splits.length + 1})</span>
+                      <span>Valor a receber</span>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {selectedTx.splits.map((sp, idx) => {
+                        const personObj = people.find((p) => p.id === sp.personId);
+                        const name = sp.personName || personObj?.name || `Amigo ${idx + 1}`;
+                        const pix = sp.personPixKey || personObj?.pixKey || personObj?.phone;
+                        return (
+                          <div
+                            key={sp.personId || idx}
+                            className="flex items-center justify-between py-2 px-2.5 rounded-xl bg-black/40 border border-white/5"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-xs font-bold text-emerald-300 shrink-0">
+                                {name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-xs font-semibold text-white truncate">{name}</span>
+                                {pix && (
+                                  <span className="text-[10px] text-zinc-400 truncate font-mono">
+                                    Pix: {pix}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="text-xs font-bold text-emerald-400 font-sans">
+                                R$ {formatCurrency(sp.amountOwed)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Resumo da sua parte */}
+                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs">
+                      <span className="text-zinc-400">Sua parte nesta transação:</span>
+                      <span className="font-bold text-white font-sans">
+                        R$ {formatCurrency(
+                          Math.max(
+                            0,
+                            selectedTx.amount - selectedTx.splits.reduce((acc, s) => acc + s.amountOwed, 0)
+                          ) || selectedTx.amount / (selectedTx.splits.length + 1)
+                        )}
                       </span>
                     </div>
                   </div>
@@ -3477,146 +3649,682 @@ export function ExtratoClient({
               </div>
             )}
 
-            {/* Tela Completa 100% OPACA: Editar Transação (Não vaza a tela de baixo e permite rolar até o fim) */}
-            {isEditTxModalOpen && (
-              <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm flex justify-center overflow-hidden select-none">
-                <div className="w-full max-w-full sm:max-w-[460px] h-[100dvh] max-h-[100dvh] bg-black text-white flex flex-col animate-in slide-in-from-bottom duration-200 overflow-hidden sm:border-x sm:border-white/10 sm:shadow-2xl relative">
-                  {/* Header Fixo */}
-                  <div className="shrink-0 flex items-center justify-between w-full px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-3 border-b border-white/[0.08] bg-black z-20">
-                    <button
-                      type="button"
-                      onClick={() => setIsEditTxModalOpen(false)}
-                      aria-label="Voltar"
-                      className="w-11 h-11 rounded-full liquid-glass-btn flex items-center justify-center text-white active:scale-95 transition cursor-pointer shadow-md"
-                    >
-                      <ChevronLeft className="w-5 h-5 stroke-[2.4]" />
-                    </button>
-                    <h3 className="text-base sm:text-lg font-black text-white">Editar Transação</h3>
-                    <div className="w-11 h-11" />
-                  </div>
+            {/* Tela Completa 100% OPACA: Editar Transação (Novo layout fiel à imagem de referência) */}
+            {isEditTxModalOpen && (() => {
+              const origCents = Math.round(selectedTx.amount * 100);
+              const origInstTotal = selectedTx.installmentTotal || 1;
+              const origTotalVal = selectedTx.originalTotalAmount || selectedTx.amount * origInstTotal;
+              const origTotalCents = Math.round(origTotalVal * 100);
+              const origRawDate = selectedTx.transactionDate || "";
+              const origDate = origRawDate.includes("T") ? origRawDate.split("T")[0] : origRawDate || "2026-11-08";
+              const origTime = origRawDate.includes("T") ? origRawDate.split("T")[1]?.slice(0, 5) || "12:00" : "12:00";
+              const origPm = selectedTx.paymentMethod || "credit";
+              const origHidden = Boolean(selectedTx.isHidden);
+              const origFixed = Boolean(selectedTx.isFixed);
+              const origCatName = selectedTx.categoryName || "Geral";
+              const origSplits = selectedTx.splits || [];
+              const origSplitEnabled = origSplits.length > 0;
+              const origPersonIds = origSplits.map((s) => s.personId).sort().join(",");
+              const currentPersonIds = [...editTxPersonIds].sort().join(",");
 
-                {/* Formulário com Scroll independente até o fim */}
-                <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-4 no-scrollbar pb-36">
-                  <div>
-                    <label className="text-xs text-zinc-300 font-bold mb-1.5 block">Título da compra</label>
-                    <input
-                      type="text"
-                      value={editTxTitle}
-                      onChange={(e) => setEditTxTitle(e.target.value)}
-                      className="w-full px-5 py-3.5 rounded-full liquid-glass-input text-sm text-white focus:outline-none focus:border-lime-400"
-                    />
-                  </div>
+              const isInstallmentChanged =
+                editTxInstallmentTotal !== origInstTotal ||
+                (editTxInstallmentTotal > 1 && editTxTotalCentsAmount !== origTotalCents);
 
-                  <div>
-                    <label className="text-xs text-zinc-300 font-bold mb-1.5 block">Valor (R$)</label>
-                    <div className="relative">
-                      <span className="absolute left-5 top-3.5 text-sm text-zinc-400 font-bold">R$</span>
-                      <input
-                        type="text"
-                        value={(editTxCentsAmount / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        onChange={(e) => {
-                          const digitsOnly = e.target.value.replace(/\D/g, "");
-                          setEditTxCentsAmount(parseInt(digitsOnly, 10) || 0);
-                        }}
-                        className="w-full pl-12 pr-5 py-3.5 rounded-full liquid-glass-input text-base font-bold text-white focus:outline-none focus:border-lime-400 font-mono"
-                      />
-                    </div>
-                  </div>
+              const isSplitChanged =
+                editTxIsSplitEnabled !== origSplitEnabled ||
+                (editTxIsSplitEnabled && currentPersonIds !== origPersonIds);
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-zinc-300 font-bold mb-1.5 block">Data</label>
-                      <input
-                        type="date"
-                        value={editTxDate}
-                        onChange={(e) => setEditTxDate(e.target.value)}
-                        className="w-full px-4 py-3 rounded-full liquid-glass-input text-xs sm:text-sm text-white focus:outline-none focus:border-lime-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-zinc-300 font-bold mb-1.5 block">Horário</label>
-                      <input
-                        type="time"
-                        value={editTxTime}
-                        onChange={(e) => setEditTxTime(e.target.value)}
-                        className="w-full px-4 py-3 rounded-full liquid-glass-input text-xs sm:text-sm text-white focus:outline-none focus:border-lime-400"
-                      />
-                    </div>
-                  </div>
+              const hasChanges =
+                editTxTitle.trim() !== selectedTx.title.trim() ||
+                editTxCentsAmount !== origCents ||
+                editTxDate !== origDate ||
+                editTxTime !== origTime ||
+                editTxPaymentMethod !== origPm ||
+                editTxIsHidden !== origHidden ||
+                editTxIsFixed !== origFixed ||
+                editTxCategoryName !== origCatName ||
+                isInstallmentChanged ||
+                isSplitChanged;
 
-                  {/* Forma de Pagamento */}
-                  <div className="pt-2">
-                    <label className="text-xs text-zinc-300 font-bold mb-2 block">Forma de Pagamento</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { id: "credit", label: "Cartão de Crédito" },
-                        { id: "debit", label: "Cartão de Débito" },
-                        { id: "pix", label: "Pix" },
-                        { id: "vr", label: "Vale Refeição (VR)" },
-                        { id: "va", label: "Vale Alimentação (VA)" },
-                        { id: "cash", label: "Dinheiro em Espécie" },
-                      ].map((pm) => {
-                        const isSelected = editTxPaymentMethod === pm.id;
-                        return (
-                          <button
-                            key={pm.id}
-                            type="button"
-                            onClick={() => setEditTxPaymentMethod(pm.id)}
-                            className={`p-3 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
-                              isSelected
-                                ? "bg-white text-black shadow-lg"
-                                : "liquid-glass-btn text-zinc-300 hover:text-white"
-                            }`}
-                          >
-                            <span>{pm.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
+              const handleSaveEdit = async () => {
+                const newAmount = editTxCentsAmount > 0 ? editTxCentsAmount / 100 : selectedTx.amount;
+                const newTotalAmount =
+                  editTxTotalCentsAmount > 0
+                    ? editTxTotalCentsAmount / 100
+                    : newAmount * editTxInstallmentTotal;
+                const newTitle = editTxTitle.trim() || selectedTx.title;
+                const newDate = `${editTxDate}T${editTxTime}:00`;
 
-                {/* Footer Fixo OPACO com botões arredondados Liquid Glass */}
-                <div className="shrink-0 bg-black border-t border-white/[0.08] px-5 py-3.5 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex items-center gap-3 z-30 shadow-2xl">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditTxModalOpen(false)}
-                    className="flex-1 py-3.5 rounded-full liquid-glass-btn font-bold text-sm cursor-pointer active:scale-95 transition"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const newAmount = editTxCentsAmount > 0 ? editTxCentsAmount / 100 : selectedTx.amount;
-                      const newTitle = editTxTitle.trim() || selectedTx.title;
-                      const newDate = `${editTxDate}T${editTxTime}:00`;
-                      const updatedTx: ExtratoTransaction = {
-                        ...selectedTx,
+                // Cálculo do rateio (splits)
+                let newSplits: TransactionSplit[] | undefined = undefined;
+                if (editTxIsSplitEnabled && editTxPersonIds.length > 0) {
+                  const perPerson = newAmount / (editTxPersonIds.length + 1);
+                  newSplits = editTxPersonIds.map((pid) => {
+                    const pObj = people.find((p) => p.id === pid);
+                    return {
+                      personId: pid,
+                      personName: pObj?.name || "Amigo",
+                      personPixKey: pObj?.pixKey || pObj?.phone,
+                      amountOwed: perPerson,
+                      percentage: Math.round(100 / (editTxPersonIds.length + 1)),
+                      direction: "receivable",
+                      isPaid: false,
+                    };
+                  });
+                } else if (!editTxIsSplitEnabled) {
+                  newSplits = [];
+                }
+
+                const updatedTx: ExtratoTransaction = {
+                  ...selectedTx,
+                  title: newTitle,
+                  amount: newAmount,
+                  originalTotalAmount: editTxInstallmentTotal > 1 ? newTotalAmount : undefined,
+                  installmentTotal: editTxInstallmentTotal,
+                  transactionDate: newDate,
+                  paymentMethod: editTxPaymentMethod,
+                  isHidden: editTxIsHidden,
+                  isFixed: editTxIsFixed,
+                  categoryName: editTxCategoryName,
+                  categoryIcon: editTxCategoryIcon,
+                  categoryColor: editTxCategoryColor,
+                  splits: newSplits,
+                };
+
+                setSelectedTx(updatedTx);
+                setTransactions((prev) =>
+                  prev.map((t) => {
+                    if (
+                      editTxApplyToAll &&
+                      selectedTx.installmentGroupId &&
+                      t.installmentGroupId === selectedTx.installmentGroupId
+                    ) {
+                      return {
+                        ...t,
                         title: newTitle,
                         amount: newAmount,
-                        transactionDate: newDate,
+                        originalTotalAmount: newTotalAmount,
+                        installmentTotal: editTxInstallmentTotal,
                         paymentMethod: editTxPaymentMethod,
+                        isHidden: editTxIsHidden,
+                        categoryName: editTxCategoryName,
+                        categoryIcon: editTxCategoryIcon,
+                        categoryColor: editTxCategoryColor,
+                        splits: newSplits,
                       };
-                      setSelectedTx(updatedTx);
-                      setTransactions((prev) =>
-                        prev.map((t) => (t.id === selectedTx.id ? updatedTx : t))
-                      );
-                      setIsEditTxModalOpen(false);
-                      await updateTransactionAction(selectedTx.id, {
-                        description: newTitle,
-                        amount: newAmount,
-                        paymentMethod: editTxPaymentMethod,
-                      });
-                    }}
-                    className="flex-1 py-3.5 rounded-full liquid-glass-btn-accent font-black text-sm cursor-pointer shadow-xl active:scale-95 transition flex items-center justify-center gap-2"
-                  >
-                    Salvar alterações
-                  </button>
+                    }
+                    return t.id === selectedTx.id ? updatedTx : t;
+                  })
+                );
+                setIsEditTxModalOpen(false);
+
+                await updateTransactionAction(selectedTx.id, {
+                  description: newTitle,
+                  amount: newAmount,
+                  transactionDate: newDate,
+                  paymentMethod: editTxPaymentMethod,
+                  isFixed: editTxIsFixed,
+                  isHidden: editTxIsHidden,
+                  installmentTotal: editTxInstallmentTotal,
+                  originalTotalAmount: newTotalAmount,
+                  applyToAllInstallments: editTxApplyToAll,
+                  splits: newSplits?.map((s) => ({
+                    personId: s.personId,
+                    amountOwed: s.amountOwed,
+                    percentage: 0,
+                    isPaid: s.isPaid,
+                  })),
+                  categoryId: editTxCategoryId
+                    ? editTxCategoryId.startsWith("sub-") || editTxCategoryId.startsWith("cat-")
+                      ? undefined
+                      : editTxCategoryId
+                    : undefined,
+                });
+              };
+
+              return (
+                <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm flex justify-center overflow-hidden select-none">
+                  <div className="w-full max-w-full sm:max-w-[460px] h-[100dvh] max-h-[100dvh] bg-black text-white flex flex-col animate-in slide-in-from-bottom duration-200 overflow-hidden sm:border-x sm:border-white/10 sm:shadow-2xl relative">
+                    {/* Header com botão fechar circular na direita */}
+                    <div className="shrink-0 flex items-center justify-between w-full px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-1 bg-black z-20">
+                      <div className="w-10 h-10" />
+                      <button
+                        type="button"
+                        onClick={() => setIsEditTxModalOpen(false)}
+                        aria-label="Fechar"
+                        className="w-10 h-10 rounded-full bg-[#1b1c22] hover:bg-[#27262c] active:scale-95 transition flex items-center justify-center text-zinc-300 hover:text-white cursor-pointer shadow-md"
+                      >
+                        <X className="w-5 h-5 stroke-[2.2]" />
+                      </button>
+                    </div>
+
+                    {/* Título Principal */}
+                    <div className="px-5 pb-3">
+                      <h2 className="text-2xl sm:text-[26px] font-bold text-white tracking-tight">
+                        Editar transação
+                      </h2>
+                    </div>
+
+                    {/* Formulário com Scroll independente até o fim */}
+                    <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-2 space-y-6 no-scrollbar pb-36">
+                      {/* Seção: Dados da transação */}
+                      <div className="flex flex-col gap-4">
+                        <h3 className="text-sm sm:text-[15px] font-semibold text-zinc-400">
+                          Dados da transação
+                        </h3>
+
+                        {/* Nome da transação */}
+                        <div className="relative rounded-2xl border border-white/10 bg-transparent px-4 py-3.5 focus-within:border-white/30 transition-colors">
+                          <span className="absolute -top-2.5 left-4 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                            Nome da transação
+                          </span>
+                          <input
+                            type="text"
+                            value={editTxTitle}
+                            onChange={(e) => setEditTxTitle(e.target.value)}
+                            className="w-full bg-transparent text-sm sm:text-base font-medium text-white focus:outline-none"
+                            placeholder="Nome da transação"
+                          />
+                        </div>
+
+                        {/* Parcelamento e Valores */}
+                        {editTxPaymentMethod === "credit" || editTxInstallmentTotal > 1 ? (
+                          <div className="flex flex-col gap-3.5 p-3.5 rounded-2xl bg-white/[0.02] border border-white/10">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
+                              <Layers className="w-4 h-4" />
+                              <span>Opções de parcelamento</span>
+                            </div>
+
+                            {/* Seletor de parcelas com notched outline */}
+                            <div className="relative rounded-2xl border border-white/10 bg-transparent px-4 py-3 focus-within:border-white/30 transition-colors">
+                              <span className="absolute -top-2.5 left-4 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                                Número de parcelas
+                              </span>
+                              <select
+                                value={editTxInstallmentTotal}
+                                onChange={(e) => {
+                                  const newTotal = parseInt(e.target.value, 10) || 1;
+                                  setEditTxInstallmentTotal(newTotal);
+                                  if (newTotal > 1) {
+                                    setEditTxCentsAmount(Math.round(editTxTotalCentsAmount / newTotal));
+                                  } else {
+                                    setEditTxCentsAmount(editTxTotalCentsAmount);
+                                  }
+                                }}
+                                className="w-full bg-transparent text-sm sm:text-base font-semibold text-white focus:outline-none cursor-pointer appearance-none"
+                              >
+                                <option value={1} className="bg-zinc-900 text-white">À vista (1x)</option>
+                                {Array.from({ length: 23 }, (_, i) => i + 2).map((n) => (
+                                  <option key={n} value={n} className="bg-zinc-900 text-white">
+                                    {n}x de R$ {((editTxTotalCentsAmount / n) / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {editTxInstallmentTotal > 1 ? (
+                              <>
+                                {/* Valor Total da Compra */}
+                                <div className="relative rounded-2xl border border-white/10 bg-transparent px-4 py-3.5 focus-within:border-white/30 transition-colors">
+                                  <span className="absolute -top-2.5 left-4 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                                    Valor total da compra
+                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-sm sm:text-base font-bold text-white">R$</span>
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      value={(editTxTotalCentsAmount / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                      onChange={(e) => {
+                                        const digits = e.target.value.replace(/\D/g, "");
+                                        const newTotalCents = parseInt(digits, 10) || 0;
+                                        setEditTxTotalCentsAmount(newTotalCents);
+                                        setEditTxCentsAmount(Math.round(newTotalCents / editTxInstallmentTotal));
+                                      }}
+                                      className="w-full bg-transparent text-sm sm:text-base font-bold text-white focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Valor de cada Parcela */}
+                                <div className="relative rounded-2xl border border-white/10 bg-transparent px-4 py-3.5 focus-within:border-white/30 transition-colors">
+                                  <span className="absolute -top-2.5 left-4 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                                    Valor de cada parcela ({editTxInstallmentTotal}x)
+                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-sm sm:text-base font-bold text-white">R$</span>
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      value={(editTxCentsAmount / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                      onChange={(e) => {
+                                        const digits = e.target.value.replace(/\D/g, "");
+                                        const newParcelCents = parseInt(digits, 10) || 0;
+                                        setEditTxCentsAmount(newParcelCents);
+                                        setEditTxTotalCentsAmount(newParcelCents * editTxInstallmentTotal);
+                                      }}
+                                      className="w-full bg-transparent text-sm sm:text-base font-bold text-white focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Checkbox aplicar a todas as parcelas */}
+                                <label className="flex items-start gap-2.5 cursor-pointer select-none pt-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={editTxApplyToAll}
+                                    onChange={(e) => setEditTxApplyToAll(e.target.checked)}
+                                    className="w-4 h-4 mt-0.5 rounded border-white/20 text-white focus:ring-0 bg-transparent cursor-pointer"
+                                  />
+                                  <div className="flex flex-col">
+                                    <span className="text-xs font-semibold text-white">
+                                      Aplicar alterações a todas as parcelas deste grupo
+                                    </span>
+                                    <span className="text-[11px] text-zinc-400 leading-snug">
+                                      Atualiza nome, valor, categoria e rateio em todas as parcelas.
+                                    </span>
+                                  </div>
+                                </label>
+                              </>
+                            ) : (
+                              /* Valor À Vista */
+                              <div className="relative rounded-2xl border border-white/10 bg-transparent px-4 py-3.5 focus-within:border-white/30 transition-colors">
+                                <span className="absolute -top-2.5 left-4 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                                  Valor
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm sm:text-base font-bold text-white">R$</span>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={(editTxCentsAmount / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                    onChange={(e) => {
+                                      const digitsOnly = e.target.value.replace(/\D/g, "");
+                                      const val = parseInt(digitsOnly, 10) || 0;
+                                      setEditTxCentsAmount(val);
+                                      setEditTxTotalCentsAmount(val);
+                                    }}
+                                    className="w-full bg-transparent text-sm sm:text-base font-bold text-white focus:outline-none"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          /* Valor para transações não-crédito */
+                          <div className="relative rounded-2xl border border-white/10 bg-transparent px-4 py-3.5 focus-within:border-white/30 transition-colors">
+                            <span className="absolute -top-2.5 left-4 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                              Valor
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm sm:text-base font-bold text-white">R$</span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={(editTxCentsAmount / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                onChange={(e) => {
+                                  const digitsOnly = e.target.value.replace(/\D/g, "");
+                                  const val = parseInt(digitsOnly, 10) || 0;
+                                  setEditTxCentsAmount(val);
+                                  setEditTxTotalCentsAmount(val);
+                                }}
+                                className="w-full bg-transparent text-sm sm:text-base font-bold text-white focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Data */}
+                        <div
+                          onClick={() => {
+                            try {
+                              editDatePickerRef.current?.showPicker();
+                            } catch {
+                              editDatePickerRef.current?.focus();
+                            }
+                          }}
+                          className="relative rounded-2xl border border-white/10 bg-transparent px-4 py-3.5 flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors"
+                        >
+                          <span className="absolute -top-2.5 left-4 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                            Data
+                          </span>
+                          <span className="text-sm sm:text-base font-medium text-white">
+                            {formatMediumPortugueseDate(editTxDate)}
+                          </span>
+                          <Calendar className="w-5 h-5 text-zinc-400 shrink-0" />
+                          <input
+                            ref={editDatePickerRef}
+                            type="date"
+                            value={editTxDate}
+                            onChange={(e) => setEditTxDate(e.target.value)}
+                            className="sr-only absolute pointer-events-none"
+                          />
+                        </div>
+
+                        {/* Categoria */}
+                        <div
+                          onClick={() => {
+                            setIsEditingEditTxCategory(true);
+                            setSearchCatQuery("");
+                            setIsCategoryPickerOpen(true);
+                          }}
+                          className="relative rounded-2xl border border-white/10 bg-transparent px-4 py-3 flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors"
+                        >
+                          <span className="absolute -top-2.5 left-4 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                            Categoria
+                          </span>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-full bg-[#1b1c22] border border-white/5 flex items-center justify-center shrink-0">
+                              {renderCategoryItemIcon(editTxCategoryIcon, editTxCategoryColor, "w-4 h-4")}
+                            </div>
+                            <span className="text-sm sm:text-base font-medium text-white truncate">
+                              {editTxCategoryName || "Geral"}
+                            </span>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-zinc-400 shrink-0" />
+                        </div>
+
+                        {/* Forma de Pagamento */}
+                        <div className="relative rounded-2xl border border-white/10 bg-transparent p-3.5 pt-4 transition-colors">
+                          <span className="absolute -top-2.5 left-4 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                            Forma de pagamento
+                          </span>
+                          <div className="grid grid-cols-2 gap-2 mt-0.5">
+                            {[
+                              { id: "credit", label: "Cartão de Crédito" },
+                              { id: "debit", label: "Cartão de Débito" },
+                              { id: "pix", label: "Pix" },
+                              { id: "vr", label: "Vale Refeição (VR)" },
+                              { id: "va", label: "Vale Alimentação (VA)" },
+                              { id: "cash", label: "Dinheiro em Espécie" },
+                            ].map((pm) => {
+                              const isSelected = editTxPaymentMethod === pm.id;
+                              return (
+                                <button
+                                  key={pm.id}
+                                  type="button"
+                                  onClick={() => setEditTxPaymentMethod(pm.id)}
+                                  className={`p-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left ${
+                                    isSelected
+                                      ? "bg-white text-black shadow-md font-bold"
+                                      : "bg-[#141418] border border-white/5 text-zinc-300 hover:text-white hover:border-white/10"
+                                  }`}
+                                >
+                                  <span>{pm.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Seção: Divisão com Amigos (Rateio) */}
+                      <div className="flex flex-col gap-3 pt-2">
+                        <div className="flex items-center justify-between py-1">
+                          <div className="flex items-center gap-3.5 min-w-0 pr-3">
+                            <div className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                              <Users className="w-5 h-5" />
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-sm font-semibold text-white">
+                                Dividir com amigos
+                              </span>
+                              <span className="text-xs text-zinc-400 leading-relaxed">
+                                Racha a despesa com outras pessoas.
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setEditTxIsSplitEnabled((prev) => !prev)}
+                            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out p-0.5 ${
+                              editTxIsSplitEnabled ? "bg-white" : "bg-[#27262c]"
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full shadow-md transition duration-200 ease-in-out ${
+                                editTxIsSplitEnabled ? "translate-x-5 bg-black" : "translate-x-0 bg-zinc-400"
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        {/* Área expansível de seleção de amigos */}
+                        {editTxIsSplitEnabled && (
+                          <div className="flex flex-col gap-3 p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 animate-in fade-in duration-200">
+                            <div className="flex items-center justify-between text-xs text-zinc-400">
+                              <span>Selecione quem divide com você:</span>
+                              <button
+                                type="button"
+                                onClick={() => setEditTxIsRegisteringPerson((prev) => !prev)}
+                                className="text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer"
+                              >
+                                {editTxIsRegisteringPerson ? "Cancelar" : "+ Novo contato"}
+                              </button>
+                            </div>
+
+                            {/* Formulário rápido inline de novo amigo */}
+                            {editTxIsRegisteringPerson && (
+                              <div className="flex flex-col gap-2 p-3 rounded-xl bg-black/60 border border-white/10">
+                                <input
+                                  type="text"
+                                  placeholder="Nome do amigo"
+                                  value={editTxNewPersonName}
+                                  onChange={(e) => setEditTxNewPersonName(e.target.value)}
+                                  className="w-full bg-[#1b1c22] border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-white/30"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Chave Pix ou telefone (opcional)"
+                                  value={editTxNewPersonPix}
+                                  onChange={(e) => setEditTxNewPersonPix(e.target.value)}
+                                  className="w-full bg-[#1b1c22] border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-white/30"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!editTxNewPersonName.trim()) return;
+                                    const tempId = `p-${Date.now()}`;
+                                    const newP: Person = {
+                                      id: tempId,
+                                      name: editTxNewPersonName.trim(),
+                                      pixKey: editTxNewPersonPix.trim() || undefined,
+                                    };
+                                    setPeople((prev) => [...prev, newP]);
+                                    setEditTxPersonIds((prev) => [...prev, tempId]);
+                                    setEditTxNewPersonName("");
+                                    setEditTxNewPersonPix("");
+                                    setEditTxIsRegisteringPerson(false);
+                                    try {
+                                      const res = await createPersonAction({
+                                        name: newP.name,
+                                        pixKey: newP.pixKey,
+                                      });
+                                      if (res.success && res.data) {
+                                        setPeople((prev) => prev.map((p) => (p.id === tempId ? res.data! : p)));
+                                        setEditTxPersonIds((prev) => prev.map((id) => (id === tempId ? res.data!.id : id)));
+                                      }
+                                    } catch (err) {
+                                      console.error("Erro ao cadastrar pessoa no rateio:", err);
+                                    }
+                                  }}
+                                  className="w-full py-2 rounded-lg bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 active:scale-95 transition cursor-pointer"
+                                >
+                                  Adicionar à divisão
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Lista de amigos cadastrados */}
+                            <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto no-scrollbar">
+                              {people.map((person) => {
+                                const isSelected = editTxPersonIds.includes(person.id);
+                                return (
+                                  <div
+                                    key={person.id}
+                                    onClick={() => {
+                                      setEditTxPersonIds((prev) =>
+                                        isSelected ? prev.filter((id) => id !== person.id) : [...prev, person.id]
+                                      );
+                                    }}
+                                    className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer border transition-all ${
+                                      isSelected
+                                        ? "bg-emerald-500/15 border-emerald-500/30 text-white"
+                                        : "bg-white/[0.02] border-white/5 text-zinc-400 hover:border-white/15"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div
+                                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                                          isSelected
+                                            ? "bg-emerald-400 text-black font-extrabold"
+                                            : "bg-[#1b1c22] text-zinc-400"
+                                        }`}
+                                      >
+                                        {person.name.charAt(0).toUpperCase()}
+                                      </div>
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="text-xs font-semibold truncate">{person.name}</span>
+                                        {person.pixKey && (
+                                          <span className="text-[10px] text-zinc-500 truncate font-mono">
+                                            {person.pixKey}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div
+                                      className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
+                                        isSelected
+                                          ? "bg-emerald-400 border-emerald-400 text-black"
+                                          : "border-white/20 bg-transparent"
+                                      }`}
+                                    >
+                                      {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Detalhamento do cálculo em tempo real */}
+                            {(() => {
+                              const totalParticipants = editTxPersonIds.length + 1;
+                              const currentAmountToDivide =
+                                editTxCentsAmount > 0 ? editTxCentsAmount / 100 : selectedTx.amount;
+                              const perPersonShare =
+                                totalParticipants > 0
+                                  ? currentAmountToDivide / totalParticipants
+                                  : currentAmountToDivide;
+                              return (
+                                <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col gap-1 text-xs">
+                                  <div className="flex items-center justify-between text-zinc-400">
+                                    <span>Dividido entre:</span>
+                                    <span className="text-white font-semibold">
+                                      {totalParticipants} pessoa{totalParticipants > 1 ? "s" : ""} (Você + {editTxPersonIds.length})
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-emerald-300 font-bold">
+                                    <span>Cada amigo paga:</span>
+                                    <span className="font-sans">R$ {formatCurrency(perPersonShare)}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-zinc-300">
+                                    <span>Sua parte:</span>
+                                    <span className="font-bold text-white font-sans">
+                                      R$ {formatCurrency(perPersonShare)}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Seção: Configurações da transação */}
+                      <div className="flex flex-col gap-4 pt-2">
+                        <h3 className="text-sm sm:text-[15px] font-semibold text-zinc-400">
+                          Configurações da transação
+                        </h3>
+
+                        {/* Ocultar do somatório */}
+                        <div className="flex items-center justify-between py-1">
+                          <div className="flex items-center gap-3.5 min-w-0 pr-3">
+                            <div className="w-10 h-10 rounded-full bg-[#1b1c22] border border-white/5 flex items-center justify-center text-zinc-400 shrink-0">
+                              <EyeOff className="w-5 h-5" />
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-sm font-semibold text-white">
+                                Ocultar do somatório
+                              </span>
+                              <span className="text-xs text-zinc-400 leading-relaxed">
+                                Transação não conta nos totais e análises.
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setEditTxIsHidden((prev) => !prev)}
+                            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out p-0.5 ${
+                              editTxIsHidden ? "bg-white" : "bg-[#27262c]"
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full shadow-md transition duration-200 ease-in-out ${
+                                editTxIsHidden ? "translate-x-5 bg-black" : "translate-x-0 bg-zinc-400"
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        {/* Transação fixa */}
+                        <div className="flex items-center justify-between py-1">
+                          <div className="flex items-center gap-3.5 min-w-0 pr-3">
+                            <div className="w-10 h-10 rounded-full bg-[#1b1c22] border border-white/5 flex items-center justify-center text-zinc-400 shrink-0">
+                              <RotateCcw className="w-5 h-5" />
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-sm font-semibold text-white">
+                                Transação fixa
+                              </span>
+                              <span className="text-xs text-zinc-400 leading-relaxed">
+                                Repete todo mês automaticamente.
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setEditTxIsFixed((prev) => !prev)}
+                            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out p-0.5 ${
+                              editTxIsFixed ? "bg-white" : "bg-[#27262c]"
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full shadow-md transition duration-200 ease-in-out ${
+                                editTxIsFixed ? "translate-x-5 bg-black" : "translate-x-0 bg-zinc-400"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Rodapé Fixo - Exibido apenas se algo for alterado */}
+                    {hasChanges && (
+                      <div className="shrink-0 bg-black/95 backdrop-blur-md border-t border-white/[0.08] px-5 py-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] z-30 animate-in slide-in-from-bottom duration-200 shadow-2xl">
+                        <button
+                          type="button"
+                          onClick={handleSaveEdit}
+                          className="w-full py-3.5 sm:py-4 rounded-full bg-white text-black font-bold text-sm sm:text-base hover:bg-zinc-100 active:scale-95 transition-all shadow-xl flex items-center justify-center cursor-pointer"
+                        >
+                          Salvar alterações
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+              );
+            })()}
           </div>
         </div>
       </Portal>

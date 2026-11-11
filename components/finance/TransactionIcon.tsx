@@ -54,22 +54,20 @@ export function TransactionIcon({
   const detectedBrand = detectBrand(title);
   const targetDomain = domain || detectedBrand?.domain;
 
-  // 2. Se tiver marca identificada e a imagem ainda não falhou, renderiza o logo oficial da empresa
+  // 2. Se tiver marca identificada e a imagem ainda não falhou, renderiza o logo oficial da empresa ocupando o círculo inteiro
   if (targetDomain && !imageError) {
     const faviconUrl = getGoogleFaviconUrl(targetDomain, 128);
-    const innerImgSize = Math.max(22, Math.floor(size * 0.58));
 
     return (
       <div
-        className={`relative flex items-center justify-center shrink-0 rounded-full bg-[#1b1c22] border border-white/5 overflow-hidden shadow-inner ${className}`}
+        className={`relative flex items-center justify-center shrink-0 rounded-full bg-[#1b1c22] border border-white/10 overflow-hidden shadow-inner ${className}`}
         style={{ width: size, height: size }}
         title={`${title} (${detectedBrand?.name || targetDomain})`}
       >
         <img
           src={faviconUrl}
           alt={title}
-          style={{ width: innerImgSize, height: innerImgSize }}
-          className="object-contain rounded-full"
+          className="w-full h-full object-cover rounded-full"
           loading="lazy"
           onError={() => setImageError(true)}
         />

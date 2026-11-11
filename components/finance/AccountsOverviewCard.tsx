@@ -53,13 +53,13 @@ function AccountLogo({ name, logoType }: { name: string; logoType?: string }) {
     const faviconUrl = getGoogleFaviconUrl(domain, 128);
     return (
       <div
-        className="w-10 h-10 rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center shadow-md shadow-black/40 shrink-0 overflow-hidden p-1.5"
+        className="w-10 h-10 rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center shadow-md shadow-black/40 shrink-0 overflow-hidden"
         title={name}
       >
         <img
           src={faviconUrl}
           alt={name}
-          className="w-full h-full object-contain rounded-full"
+          className="w-full h-full object-cover rounded-full"
           loading="lazy"
           onError={() => setImgError(true)}
         />

@@ -55,13 +55,13 @@ function SubscriptionLogo({
     const faviconUrl = getGoogleFaviconUrl(domain, 64);
     return (
       <div
-        className="w-5 h-5 rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center overflow-hidden shrink-0 shadow-sm p-0.5"
+        className="w-5 h-5 rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center overflow-hidden shrink-0 shadow-sm"
         title={service.name || domain}
       >
         <img
           src={faviconUrl}
           alt={service.name || domain}
-          className="w-full h-full object-contain rounded-full"
+          className="w-full h-full object-cover rounded-full"
           loading="lazy"
           onError={() => setImgError(true)}
         />
@@ -98,11 +98,11 @@ function CardWidgetIcon({ cardName }: { cardName: string }) {
 
   if (domain && !imgError) {
     return (
-      <div className="w-8 h-8 rounded-full bg-[#1b1c22] border border-white/15 flex items-center justify-center overflow-hidden shadow-inner p-1 shrink-0">
+      <div className="w-8 h-8 rounded-full bg-[#1b1c22] border border-white/15 flex items-center justify-center overflow-hidden shadow-inner shrink-0">
         <img
           src={getGoogleFaviconUrl(domain, 64)}
           alt={cardName}
-          className="w-full h-full object-contain rounded-full"
+          className="w-full h-full object-cover rounded-full"
           onError={() => setImgError(true)}
         />
       </div>
@@ -148,9 +148,9 @@ export function BentoDashboardGrid({
       maximumFractionDigits: 2,
     });
 
-  const cashTotal = (cashFlow.income + cashFlow.expense) || 1;
-  const incomePercent = Math.min(100, Math.max(15, Math.round((cashFlow.income / cashTotal) * 100)));
-  const expensePercent = Math.min(100, Math.max(15, Math.round((cashFlow.expense / cashTotal) * 100)));
+  const maxCashVal = Math.max(cashFlow.income, cashFlow.expense, 1);
+  const incomeBarWidth = Math.max(12, Math.min(100, Math.round((cashFlow.income / maxCashVal) * 100)));
+  const expenseBarWidth = Math.max(12, Math.min(100, Math.round((cashFlow.expense / maxCashVal) * 100)));
 
   return (
     <section className="w-full flex flex-col gap-4">
@@ -185,40 +185,44 @@ export function BentoDashboardGrid({
           </div>
         </div>
 
-        {/* Widget 2: Fluxo de Caixa (Top Right) */}
+        {/* Widget 2: Fluxo de Caixa (Top Right) - Idêntico à referência visual com proporção e barras reais */}
         <div
           onClick={() => onWidgetClick?.("fluxo")}
-          className="rounded-[28px] liquid-glass-card p-4 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300"
+          className="rounded-[28px] liquid-glass-card p-4 sm:p-5 min-h-[168px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300 active:scale-[0.98] select-none"
         >
-          <div className="flex items-start justify-between pb-2 border-b border-white/[0.08]">
-            <div className="flex flex-col">
-              <span className="text-[11px] font-medium text-zinc-400">Fluxo de caixa</span>
-              <span className={`text-lg font-bold text-white tracking-tight mt-0.5 ${isPrivacyHidden ? "balance-blur" : ""}`}>
-                {cashFlow.balance >= 0 ? "+" : ""}R$ {formatCurrency(cashFlow.balance)}
-              </span>
-            </div>
-            <svg className="w-3.5 h-3.5 text-zinc-500 group-hover:text-white transition-colors" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+          {/* Top: Título e Valores (Entrada Branca e Saída Vermelha) */}
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[13px] sm:text-sm font-medium text-zinc-400">Fluxo de caixa</span>
+            <span
+              className={`text-2xl sm:text-[26px] font-black tracking-tight text-white mt-1 leading-tight ${
+                isPrivacyHidden ? "balance-blur" : ""
+              }`}
+            >
+              R$ {formatCurrency(cashFlow.income)}
+            </span>
+            <span
+              className={`text-lg sm:text-xl font-bold tracking-tight text-[#ff5252] leading-tight ${
+                isPrivacyHidden ? "balance-blur" : ""
+              }`}
+            >
+              -R$ {formatCurrency(cashFlow.expense)}
+            </span>
           </div>
 
-          {/* Mini Bar Chart / Cashflow bars */}
-          <div className="pt-2 flex flex-col gap-1.5">
-            <div className="flex items-center justify-between text-[10px] text-zinc-400">
-              <span className="text-emerald-400 font-semibold">Entradas</span>
-              <span className={isPrivacyHidden ? "balance-blur" : ""}>R$ {formatCurrency(cashFlow.income)}</span>
-            </div>
-            <div className="w-full h-1.5 bg-white/[0.08] rounded-full overflow-hidden flex">
-              <div className="h-full bg-emerald-400 rounded-full transition-all duration-500" style={{ width: `${incomePercent}%` }} />
-            </div>
-
-            <div className="flex items-center justify-between text-[10px] text-zinc-400 pt-0.5">
-              <span className="text-rose-400 font-semibold">Saídas</span>
-              <span className={isPrivacyHidden ? "balance-blur" : ""}>R$ {formatCurrency(cashFlow.expense)}</span>
-            </div>
-            <div className="w-full h-1.5 bg-white/[0.08] rounded-full overflow-hidden flex">
-              <div className="h-full bg-rose-500 rounded-full transition-all duration-500" style={{ width: `${expensePercent}%` }} />
-            </div>
+          {/* Bottom: Gráficos de Barras com Larguras Reais proporcionais (Neon Lime e Coral Red) */}
+          <div className="pt-4 flex flex-col gap-2">
+            {/* Barra Verde Neon de Entradas */}
+            <div
+              className="h-2 sm:h-2.5 bg-[#ccff00] rounded-full transition-all duration-500 shadow-sm"
+              style={{ width: `${incomeBarWidth}%` }}
+              title={`Entradas: R$ ${formatCurrency(cashFlow.income)}`}
+            />
+            {/* Barra Vermelha de Saídas */}
+            <div
+              className="h-2 sm:h-2.5 bg-[#ff5252] rounded-full transition-all duration-500 shadow-sm"
+              style={{ width: `${expenseBarWidth}%` }}
+              title={`Saídas: R$ ${formatCurrency(cashFlow.expense)}`}
+            />
           </div>
         </div>
 

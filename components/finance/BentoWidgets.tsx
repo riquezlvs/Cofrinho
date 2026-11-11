@@ -37,13 +37,13 @@ function MiniSubscriptionLogo({
     const faviconUrl = getGoogleFaviconUrl(domain, 64);
     return (
       <div
-        className="w-5 h-5 rounded-full bg-[#1b1c22] ring-2 ring-[#121215] flex items-center justify-center overflow-hidden shrink-0 p-0.5"
+        className="w-5 h-5 rounded-full bg-[#1b1c22] ring-2 ring-[#121215] flex items-center justify-center overflow-hidden shrink-0"
         title={service.name || domain}
       >
         <img
           src={faviconUrl}
           alt={service.name || domain}
-          className="w-full h-full object-contain rounded-full"
+          className="w-full h-full object-cover rounded-full"
           onError={() => setImgError(true)}
         />
       </div>

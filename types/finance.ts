@@ -75,6 +75,18 @@ export interface InstallmentScheduleItem {
   status: "paid" | "current" | "pending";
 }
 
+export interface TransactionSplit {
+  personId: string;
+  amountOwed: number;
+  percentage?: number;
+  personName?: string;
+  pixKey?: string;
+  personPixKey?: string;
+  phone?: string;
+  isPaid?: boolean;
+  direction?: "receivable" | "payable";
+}
+
 export interface ExtratoTransaction {
   id: string;
   title: string;
@@ -82,6 +94,7 @@ export interface ExtratoTransaction {
   amount: number;
   originalTotalAmount?: number;
   type: "income" | "expense";
+  categoryId?: string;
   categoryIcon?: string;
   categoryName?: string;
   categoryColor?: string;
@@ -98,7 +111,7 @@ export interface ExtratoTransaction {
   dateGroup?: string;
   status?: "paid" | "pending";
   isFixed?: boolean;
-  splits?: { personId: string; amountOwed: number; percentage: number }[];
+  splits?: TransactionSplit[];
   splitWith?: string[];
   accountId?: string;
   creditCardId?: string;

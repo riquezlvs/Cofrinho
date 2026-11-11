@@ -40,13 +40,13 @@ function BankCardIcon({ cardName, size = 24 }: { cardName: string; size?: number
     return (
       <div
         className="rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center overflow-hidden shrink-0 shadow-xs"
-        style={{ width: size, height: size, padding: Math.max(1, Math.floor(size * 0.12)) }}
+        style={{ width: size, height: size }}
         title={cardName}
       >
         <img
           src={faviconUrl}
           alt={cardName}
-          className="w-full h-full object-contain rounded-full"
+          className="w-full h-full object-cover rounded-full"
           onError={() => setImgError(true)}
         />
       </div>

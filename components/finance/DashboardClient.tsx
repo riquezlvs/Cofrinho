@@ -18,6 +18,7 @@ export interface DashboardClientProps {
   isPrivacyHidden?: boolean;
   onTogglePrivacy?: () => void;
   onNavigateToExtrato?: () => void;
+  onNavigateToFluxo?: () => void;
   onAskCofrinho?: () => void;
   onOpenMascot?: () => void;
 }
@@ -28,6 +29,7 @@ export function DashboardClient({
   isPrivacyHidden: externalPrivacy,
   onTogglePrivacy: externalTogglePrivacy,
   onNavigateToExtrato,
+  onNavigateToFluxo,
   onAskCofrinho,
   onOpenMascot,
 }: DashboardClientProps) {
@@ -71,7 +73,19 @@ export function DashboardClient({
     }
   };
 
+  const handleNavigateFluxo = () => {
+    if (onNavigateToFluxo) {
+      onNavigateToFluxo();
+    } else {
+      router.push("/fluxo");
+    }
+  };
+
   const handleWidgetClick = (widgetName: string) => {
+    if (widgetName === "fluxo" || widgetName === "fluxo-de-caixa") {
+      handleNavigateFluxo();
+      return;
+    }
     if (widgetName === "transacoes" || widgetName === "fatura" || widgetName === "extrato") {
       handleNavigateExtrato();
       return;
