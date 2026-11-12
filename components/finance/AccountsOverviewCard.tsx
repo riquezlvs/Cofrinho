@@ -71,16 +71,21 @@ export function AccountLogo({
   const domain = getDomain();
   const sizeStyle = { width: size, height: size };
 
-  if (logoType === "santander" || name.toLowerCase().includes("santander")) {
+  if (domain && !imgError) {
+    const faviconUrl = getGoogleFaviconUrl(domain, 128);
     return (
       <div
         style={sizeStyle}
-        className={`rounded-full bg-[#ec0000] flex items-center justify-center text-white shadow-md shadow-red-600/20 shrink-0 ${className}`}
+        className={`rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center shadow-md shadow-black/40 shrink-0 overflow-hidden ${className}`}
         title={name}
       >
-        <svg className="w-1/2 h-1/2 fill-current" viewBox="0 0 24 24">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3.8 14.8c-.8.8-2 .9-2.9.4-.9-.6-1.5-1.5-1.9-2.4l-.1-.2-.1.2c-.4.9-1 1.8-1.9 2.4-.9.5-2.1.4-2.9-.4-.7-.7-.8-1.8-.3-2.6.4-.7 1.2-1.2 2-1.4l.7-.2-.5-.5c-.8-.7-1-1.8-.5-2.7.5-.9 1.5-1.3 2.5-1.1.9.2 1.6.8 1.9 1.7l.2.6.2-.6c.3-.9 1-1.5 1.9-1.7 1-.2 2 .2 2.5 1.1.5.9.3 2-.5 2.7l-.5.5.7.2c.8.2 1.6.7 2 1.4.5.8.4 1.9-.3 2.6z" />
-        </svg>
+        <img
+          src={faviconUrl}
+          alt={name}
+          className="w-full h-full object-cover rounded-full"
+          loading="lazy"
+          onError={() => setImgError(true)}
+        />
       </div>
     );
   }
@@ -97,21 +102,16 @@ export function AccountLogo({
     );
   }
 
-  if (domain && !imgError) {
-    const faviconUrl = getGoogleFaviconUrl(domain, 128);
+  if (logoType === "santander" || name.toLowerCase().includes("santander")) {
     return (
       <div
         style={sizeStyle}
-        className={`rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center shadow-md shadow-black/40 shrink-0 overflow-hidden ${className}`}
+        className={`rounded-full bg-[#ec0000] flex items-center justify-center text-white font-extrabold text-sm shadow-md shadow-red-600/20 shrink-0 ${className}`}
         title={name}
       >
-        <img
-          src={faviconUrl}
-          alt={name}
-          className="w-full h-full object-cover rounded-full"
-          loading="lazy"
-          onError={() => setImgError(true)}
-        />
+        <svg className="w-[54%] h-[54%] fill-current" viewBox="0 0 24 24">
+          <path d="M12.3 2.2c-.3.9-.1 1.9.5 2.7l.9 1.1c.7.9 1.1 2 1.1 3.1 0 1-.4 1.9-1 2.6-.1.1-.3.1-.4 0-.4-.6-.5-1.4-.2-2.1.2-.5.2-1.1 0-1.6-.4-.9-1.2-1.6-2.1-1.9-.2-.1-.4.1-.3.3.3.7.3 1.5-.1 2.2-.5.9-1.4 1.5-2.4 1.7-.2 0-.3.2-.2.4.3.7.4 1.5.1 2.3-.3.9-1 1.6-1.9 2-.8.4-1.3 1.2-1.3 2.1 0 1.7 1.9 3.1 4.5 3.7 1.1.3 2.3.4 3.5.4 4.2 0 7.6-2 7.6-4.5 0-1.5-1.1-2.8-2.8-3.6-.3-.1-.4-.5-.2-.8.7-.9 1-2.1.7-3.3-.4-1.5-1.6-2.7-3.2-3.1-.4-.1-.9-.2-1.3-.2-.3 0-.6.1-.7.3z" />
+        </svg>
       </div>
     );
   }

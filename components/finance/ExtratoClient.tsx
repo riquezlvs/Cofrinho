@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Eye,
@@ -682,6 +682,7 @@ export function ExtratoClient({
   const [editTxDate, setEditTxDate] = useState("");
   const [editTxTime, setEditTxTime] = useState("");
   const [editTxPaymentMethod, setEditTxPaymentMethod] = useState<string>("credit");
+  const [editTxSourceId, setEditTxSourceId] = useState<string>("");
   const [editTxIsHidden, setEditTxIsHidden] = useState(false);
   const [editTxIsFixed, setEditTxIsFixed] = useState(false);
   const [editTxCategoryName, setEditTxCategoryName] = useState("");
@@ -690,6 +691,7 @@ export function ExtratoClient({
   const [editTxCategoryId, setEditTxCategoryId] = useState("");
   const [isEditingEditTxCategory, setIsEditingEditTxCategory] = useState(false);
   const editDatePickerRef = useRef<HTMLInputElement>(null);
+  const editTimePickerRef = useRef<HTMLInputElement>(null);
 
   // Estados de edição avançada: Parcelas e Divisão (Splits)
   const [editTxInstallmentTotal, setEditTxInstallmentTotal] = useState<number>(1);
@@ -697,6 +699,9 @@ export function ExtratoClient({
   const [editTxApplyToAll, setEditTxApplyToAll] = useState<boolean>(true);
   const [editTxIsSplitEnabled, setEditTxIsSplitEnabled] = useState<boolean>(false);
   const [editTxPersonIds, setEditTxPersonIds] = useState<string[]>([]);
+  const [editTxSplitMode, setEditTxSplitMode] = useState<"equal" | "percent" | "exact">("equal");
+  const [editTxSplitPercentage, setEditTxSplitPercentage] = useState<number>(50);
+  const [editTxExactAmounts, setEditTxExactAmounts] = useState<Record<string, number>>({});
   const [editTxIsRegisteringPerson, setEditTxIsRegisteringPerson] = useState<boolean>(false);
   const [editTxNewPersonName, setEditTxNewPersonName] = useState("");
   const [editTxNewPersonPix, setEditTxNewPersonPix] = useState("");
@@ -918,52 +923,69 @@ export function ExtratoClient({
   const [newInstallmentTotal, setNewInstallmentTotal] = useState<number>(1);
 
   // Contas e cartões filtrados pelas regras do usuário:
-  // 1. Se for VR, mostra APENAS contas/cartões que são VR
+  // 1. Se for VR/VA, mostra APENAS contas/cartões que são VR/VA
   // 2. Se for Dinheiro, não mostra conta
   // 3. Se for Crédito, mostra cartões de crédito
   // 4. Se for Débito / Pix, mostra contas padrão (não isoladas)
-  const filteredAccounts = useMemo(() => {
-    if (newPaymentMethod === "cash") {
-      return [];
-    }
+  const getFilteredSourcesForMethod = useCallback(
+    (method: string) => {
+      if (method === "cash") {
+        return [];
+      }
 
-    if (newPaymentMethod === "vr") {
-      const vrAccs = availableAccounts.filter(
-        (acc) =>
-          acc.type === "vr" ||
-          acc.type === "va" ||
-          acc.name.toLowerCase().includes("vr") ||
-          acc.name.toLowerCase().includes("vale refeição") ||
-          acc.name.toLowerCase().includes("refeicao") ||
-          acc.name.toLowerCase().includes("alimentação") ||
-          acc.name.toLowerCase().includes("sodexo") ||
-          acc.name.toLowerCase().includes("alelo") ||
-          acc.name.toLowerCase().includes("flash")
-      );
-      const vrCards = availableCards.filter(
-        (card) =>
-          card.name.toLowerCase().includes("vr") ||
-          card.name.toLowerCase().includes("vale") ||
-          card.name.toLowerCase().includes("refeicao")
-      );
+      if (method === "vr" || method === "va") {
+        const vrAccs = availableAccounts.filter(
+          (acc) =>
+            acc.type === "vr" ||
+            acc.type === "va" ||
+            acc.name.toLowerCase().includes("vr") ||
+            acc.name.toLowerCase().includes("va") ||
+            acc.name.toLowerCase().includes("vale refeição") ||
+            acc.name.toLowerCase().includes("refeicao") ||
+            acc.name.toLowerCase().includes("alimentação") ||
+            acc.name.toLowerCase().includes("sodexo") ||
+            acc.name.toLowerCase().includes("alelo") ||
+            acc.name.toLowerCase().includes("flash")
+        );
+        const vrCards = availableCards.filter(
+          (card) =>
+            card.name.toLowerCase().includes("vr") ||
+            card.name.toLowerCase().includes("va") ||
+            card.name.toLowerCase().includes("vale") ||
+            card.name.toLowerCase().includes("refeicao") ||
+            card.name.toLowerCase().includes("alimenta")
+        );
 
-      const combined = [
-        ...vrAccs,
-        ...vrCards.map((c) => ({ id: c.id, name: c.name, type: "vr" })),
-      ];
+        const combined = [
+          ...vrAccs,
+          ...vrCards.map((c) => ({ id: c.id, name: c.name, type: method })),
+        ];
 
-      return combined.length > 0
-        ? combined
-        : [{ id: "acc-vr", name: "Vale Refeição (VR)", type: "vr" }];
-    }
+        return combined.length > 0
+          ? combined
+          : [
+              {
+                id: "acc-vr",
+                name: method === "va" ? "Vale Alimentação (VA)" : "Vale Refeição (VR)",
+                type: method,
+              },
+            ];
+      }
 
-    if (newPaymentMethod === "credit") {
-      return availableCards.map((c) => ({ id: c.id, name: c.name, type: "credit" }));
-    }
+      if (method === "credit") {
+        return availableCards.map((c) => ({ id: c.id, name: c.name, type: "credit" }));
+      }
 
-    const normalAccs = availableAccounts.filter((a) => a.type !== "vr" && a.type !== "va");
-    return normalAccs.length > 0 ? normalAccs : availableAccounts;
-  }, [newPaymentMethod, availableAccounts, availableCards]);
+      const normalAccs = availableAccounts.filter((a) => a.type !== "vr" && a.type !== "va");
+      return normalAccs.length > 0 ? normalAccs : availableAccounts;
+    },
+    [availableAccounts, availableCards]
+  );
+
+  const filteredAccounts = useMemo(
+    () => getFilteredSourcesForMethod(newPaymentMethod),
+    [getFilteredSourcesForMethod, newPaymentMethod]
+  );
 
   // Sincroniza a conta selecionada de forma derivada, evitando cascading renders
   const effectiveAccountId = filteredAccounts.some((a) => a.id === newAccountId)
@@ -1032,8 +1054,9 @@ export function ExtratoClient({
       ? [initialData.people[0].id]
       : ["p-1"];
   });
-  const [splitMode, setSplitMode] = useState<"equal" | "custom">("equal");
+  const [splitMode, setSplitMode] = useState<"equal" | "custom" | "exact">("equal");
   const [splitPercentage, setSplitPercentage] = useState<number>(50);
+  const [exactSplitAmounts, setExactSplitAmounts] = useState<Record<string, number>>({});
 
   // Toggle de seleção de uma pessoa
   const togglePersonSelection = (id: string) => {
@@ -1136,8 +1159,12 @@ export function ExtratoClient({
   }, [numSelectedPeople, splitMode, splitPercentage]);
 
   const totalOwedByFriends = useMemo(() => {
+    if (splitMode === "exact") {
+      const sumCents = selectedPersonIds.reduce((acc, id) => acc + (exactSplitAmounts[id] || 0), 0);
+      return Number((sumCents / 100).toFixed(2));
+    }
     return Number((perPersonOwed * numSelectedPeople).toFixed(2));
-  }, [perPersonOwed, numSelectedPeople]);
+  }, [splitMode, selectedPersonIds, exactSplitAmounts, perPersonOwed, numSelectedPeople]);
 
   const myPartNum = useMemo(() => {
     return Number(Math.max(0, totalAmountNum - totalOwedByFriends).toFixed(2));
@@ -1580,6 +1607,38 @@ export function ExtratoClient({
       }
     }
 
+    const splitsForLocal: TransactionSplit[] =
+      newType === "expense" && isSplitEnabled && numSelectedPeople > 0
+        ? selectedPersonIds.map((pId) => {
+            const pObj = people.find((p) => p.id === pId);
+            const owed =
+              splitMode === "exact"
+                ? Number(((exactSplitAmounts[pId] || 0) / 100).toFixed(2))
+                : perPersonOwed;
+            const pct =
+              splitMode === "exact"
+                ? finalAmount > 0
+                  ? Math.round((owed / finalAmount) * 100)
+                  : 0
+                : perPersonPercent;
+            return {
+              personId: pId,
+              personName: pObj?.name || "Amigo",
+              personPixKey: pObj?.pixKey || pObj?.phone,
+              amountOwed: owed,
+              percentage: pct,
+              direction: "receivable",
+              isPaid: false,
+            };
+          })
+        : [];
+
+    const txAccountId =
+      newPaymentMethod !== "cash" && newPaymentMethod !== "credit"
+        ? effectiveAccountId
+        : undefined;
+    const txCreditCardId = newPaymentMethod === "credit" ? effectiveAccountId : undefined;
+
     // Se for parcelado, gera todas as parcelas com suas respectivas datas de parcelamento
     const newItems: ExtratoTransaction[] = [];
     if (instTotal > 1) {
@@ -1601,6 +1660,8 @@ export function ExtratoClient({
           accountOrCard: accountOrCardLabel,
           accountName: accountOrCardLabel,
           accountType: txAccountType,
+          accountId: txAccountId,
+          creditCardId: txCreditCardId,
           installmentNumber: i,
           installmentTotal: instTotal,
           installmentSchedule: schedule,
@@ -1608,6 +1669,7 @@ export function ExtratoClient({
           formattedDate: fDate,
           status: i === 1 ? "paid" : "pending",
           isFixed: false,
+          splits: i === 1 ? splitsForLocal : [],
         });
       }
     } else {
@@ -1624,12 +1686,15 @@ export function ExtratoClient({
         accountOrCard: accountOrCardLabel,
         accountName: accountOrCardLabel,
         accountType: txAccountType,
+        accountId: txAccountId,
+        creditCardId: txCreditCardId,
         installmentNumber: 1,
         installmentTotal: 1,
         transactionDate: `${newDate}T${newTime}:00`,
         formattedDate,
         status: "paid",
         isFixed: newType === "expense" ? isFixedTx : isFixedIncome,
+        splits: splitsForLocal,
       });
     }
 
@@ -1645,11 +1710,11 @@ export function ExtratoClient({
       );
 
       const splitsPayload =
-        newType === "expense" && isSplitEnabled && numSelectedPeople > 0
-          ? selectedPersonIds.map((pId) => ({
-              personId: pId,
-              amountOwed: perPersonOwed,
-              percentage: perPersonPercent,
+        splitsForLocal.length > 0
+          ? splitsForLocal.map((s) => ({
+              personId: s.personId,
+              amountOwed: s.amountOwed,
+              percentage: s.percentage || 0,
             }))
           : undefined;
 
@@ -1658,13 +1723,10 @@ export function ExtratoClient({
         amount: finalAmount,
         type: newType,
         paymentMethod: newPaymentMethod,
-        transactionDate: newDate,
+        transactionDate: `${newDate}T${newTime}:00`,
         categoryId: matchedCategory?.id || (newCategoryId.startsWith("sub-") ? undefined : newCategoryId),
-        accountId:
-          newPaymentMethod !== "cash" && newPaymentMethod !== "credit"
-            ? effectiveAccountId
-            : undefined,
-        creditCardId: newPaymentMethod === "credit" ? effectiveAccountId : undefined,
+        accountId: txAccountId,
+        creditCardId: txCreditCardId,
         isFixed: newType === "expense" ? isFixedTx : isFixedIncome,
         installmentNumber: 1,
         installmentTotal: instTotal,
@@ -2436,13 +2498,13 @@ export function ExtratoClient({
                           </label>
 
                           {/* Modos rápidos de Rateio */}
-                          <div className="grid grid-cols-3 gap-1.5">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                             <button
                               type="button"
                               onClick={() => {
                                 setSplitMode("equal");
                               }}
-                              className={`py-2 px-1 rounded-xl text-[11px] font-semibold border transition text-center cursor-pointer ${
+                              className={`py-2 px-1.5 rounded-xl text-[11px] font-semibold border transition text-center cursor-pointer ${
                                 splitMode === "equal"
                                   ? "bg-white text-black border-white shadow-sm font-bold"
                                   : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
@@ -2456,7 +2518,7 @@ export function ExtratoClient({
                                 setSplitMode("custom");
                                 setSplitPercentage(50);
                               }}
-                              className={`py-2 px-1 rounded-xl text-[11px] font-semibold border transition text-center cursor-pointer ${
+                              className={`py-2 px-1.5 rounded-xl text-[11px] font-semibold border transition text-center cursor-pointer ${
                                 splitMode === "custom" && splitPercentage === 50
                                   ? "bg-white text-black border-white shadow-sm font-bold"
                                   : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
@@ -2470,13 +2532,36 @@ export function ExtratoClient({
                                 setSplitMode("custom");
                                 setSplitPercentage(100);
                               }}
-                              className={`py-2 px-1 rounded-xl text-[11px] font-semibold border transition text-center cursor-pointer ${
+                              className={`py-2 px-1.5 rounded-xl text-[11px] font-semibold border transition text-center cursor-pointer ${
                                 splitMode === "custom" && splitPercentage === 100
                                   ? "bg-white text-black border-white shadow-sm font-bold"
                                   : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
                               }`}
                             >
                               100% p/ eles
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSplitMode("exact");
+                                setExactSplitAmounts((prev) => {
+                                  const next = { ...prev };
+                                  const defaultCents = Math.round(perPersonOwed * 100);
+                                  selectedPersonIds.forEach((id) => {
+                                    if (next[id] === undefined) {
+                                      next[id] = defaultCents;
+                                    }
+                                  });
+                                  return next;
+                                });
+                              }}
+                              className={`py-2 px-1.5 rounded-xl text-[11px] font-semibold border transition text-center cursor-pointer ${
+                                splitMode === "exact"
+                                  ? "bg-white text-black border-white shadow-sm font-bold"
+                                  : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
+                              }`}
+                            >
+                              Valores (R$)
                             </button>
                           </div>
 
@@ -2501,15 +2586,58 @@ export function ExtratoClient({
                             </div>
                           )}
 
+                          {/* Valores exatos por amigo quando em modo exact */}
+                          {splitMode === "exact" && (
+                            <div className="flex flex-col gap-1.5">
+                              {selectedPersonIds.map((pId) => {
+                                const pObj = people.find((p) => p.id === pId);
+                                const cVal = exactSplitAmounts[pId] ?? 0;
+                                return (
+                                  <div
+                                    key={pId}
+                                    className="flex items-center justify-between px-3 py-2 rounded-xl bg-zinc-900 border border-white/10 text-xs"
+                                  >
+                                    <span className="text-zinc-300 font-medium truncate pr-2">
+                                      {pObj?.name || "Amigo"}
+                                    </span>
+                                    <div className="flex items-center gap-1 font-mono font-bold text-white shrink-0">
+                                      <span className="text-zinc-500">R$</span>
+                                      <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={(cVal / 100).toLocaleString("pt-BR", {
+                                          minimumFractionDigits: 2,
+                                        })}
+                                        onChange={(e) => {
+                                          const digits = e.target.value.replace(/\D/g, "");
+                                          const cents = digits ? parseInt(digits, 10) : 0;
+                                          setExactSplitAmounts((prev) => ({ ...prev, [pId]: cents }));
+                                        }}
+                                        className="w-20 bg-transparent text-right focus:outline-none text-lime-400"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {totalOwedByFriends > totalAmountNum && totalAmountNum > 0 && (
+                                <span className="text-[11px] text-amber-400 px-1">
+                                  A soma dos amigos (R$ {formatCurrency(totalOwedByFriends)}) excede o valor total.
+                                </span>
+                              )}
+                            </div>
+                          )}
+
                           {/* Resumo visual do Rateio */}
                           <div className="p-3 rounded-xl bg-black/50 border border-white/5 flex flex-col gap-1.5 text-xs">
-                            <div className="flex items-center justify-between">
-                              <span className="text-zinc-400">Cada amigo paga ({numSelectedPeople}x):</span>
-                              <span className="font-bold text-lime-400 font-mono">
-                                R$ {formatCurrency(perPersonOwed)} ({perPersonPercent}%)
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between border-t border-white/[0.04] pt-1.5">
+                            {splitMode !== "exact" && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-zinc-400">Cada amigo paga ({numSelectedPeople}x):</span>
+                                <span className="font-bold text-lime-400 font-mono">
+                                  R$ {formatCurrency(perPersonOwed)} ({perPersonPercent}%)
+                                </span>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between border-t border-white/[0.04] pt-1.5 first:border-t-0 first:pt-0">
                               <span className="text-zinc-400">Sua parte:</span>
                               <span className="font-bold text-white font-mono">
                                 R$ {formatCurrency(myPartNum)}
@@ -3215,7 +3343,17 @@ export function ExtratoClient({
           const rawDate = selectedTx.transactionDate || "";
           setEditTxDate(rawDate.includes("T") ? rawDate.split("T")[0] : rawDate || "2026-11-08");
           setEditTxTime(rawDate.includes("T") ? rawDate.split("T")[1]?.slice(0, 5) || "12:00" : "12:00");
-          setEditTxPaymentMethod(selectedTx.paymentMethod || "credit");
+          const pm = selectedTx.paymentMethod || "credit";
+          setEditTxPaymentMethod(pm);
+          const sourcesForPm = getFilteredSourcesForMethod(pm);
+          const initialSourceId =
+            (pm === "credit" ? selectedTx.creditCardId : selectedTx.accountId || selectedTx.creditCardId) ||
+            sourcesForPm.find(
+              (s) => s.name.toLowerCase() === (selectedTx.accountOrCard || "").toLowerCase()
+            )?.id ||
+            sourcesForPm[0]?.id ||
+            "";
+          setEditTxSourceId(initialSourceId);
           setEditTxIsHidden(Boolean(selectedTx.isHidden));
           setEditTxIsFixed(Boolean(selectedTx.isFixed));
           setEditTxCategoryName(selectedTx.categoryName || "Geral");
@@ -3226,6 +3364,36 @@ export function ExtratoClient({
           const existingSplits = selectedTx.splits || [];
           setEditTxIsSplitEnabled(existingSplits.length > 0);
           setEditTxPersonIds(existingSplits.map((s) => s.personId));
+          if (existingSplits.length > 0 && selectedTx.amount > 0) {
+            const equalShare = selectedTx.amount / (existingSplits.length + 1);
+            const allEqual = existingSplits.every(
+              (s) => Math.abs(s.amountOwed - equalShare) <= 0.05
+            );
+            const allSameBetweenFriends = existingSplits.every(
+              (s) => Math.abs(s.amountOwed - existingSplits[0].amountOwed) <= 0.05
+            );
+            const exactMap: Record<string, number> = {};
+            existingSplits.forEach((s) => {
+              exactMap[s.personId] = Math.round(s.amountOwed * 100);
+            });
+            setEditTxExactAmounts(exactMap);
+            if (allEqual) {
+              setEditTxSplitMode("equal");
+              setEditTxSplitPercentage(50);
+            } else if (allSameBetweenFriends) {
+              const friendsSum = existingSplits.reduce((acc, s) => acc + s.amountOwed, 0);
+              const pct = Math.min(100, Math.max(1, Math.round((friendsSum / selectedTx.amount) * 100)));
+              setEditTxSplitMode("percent");
+              setEditTxSplitPercentage(pct);
+            } else {
+              setEditTxSplitMode("exact");
+              setEditTxSplitPercentage(50);
+            }
+          } else {
+            setEditTxSplitMode("equal");
+            setEditTxSplitPercentage(50);
+            setEditTxExactAmounts({});
+          }
           setEditTxIsRegisteringPerson(false);
           setEditTxNewPersonName("");
           setEditTxNewPersonPix("");
@@ -3347,9 +3515,14 @@ export function ExtratoClient({
               </div>
             )}
 
-            {/* Data por Extenso (ex: Domingo, 8 de novembro de 2026) */}
+            {/* Data por Extenso (ex: Domingo, 8 de novembro de 2026 às 14:30) */}
             <p className="text-sm text-zinc-400 mt-1 capitalize leading-relaxed">
               {formatLongPortugueseDate(selectedTx.transactionDate)}
+              {selectedTx.transactionDate?.includes("T") && (
+                <span className="normal-case">
+                  {" "}às {selectedTx.transactionDate.split("T")[1]?.slice(0, 5)}
+                </span>
+              )}
             </p>
 
             {/* Lista de Detalhes da Atividade */}
@@ -3659,13 +3832,68 @@ export function ExtratoClient({
               const origDate = origRawDate.includes("T") ? origRawDate.split("T")[0] : origRawDate || "2026-11-08";
               const origTime = origRawDate.includes("T") ? origRawDate.split("T")[1]?.slice(0, 5) || "12:00" : "12:00";
               const origPm = selectedTx.paymentMethod || "credit";
+              const editFilteredSources = getFilteredSourcesForMethod(editTxPaymentMethod);
+              const effectiveEditSourceId = editFilteredSources.some((s) => s.id === editTxSourceId)
+                ? editTxSourceId
+                : (editFilteredSources[0]?.id || "");
+              const origSources = getFilteredSourcesForMethod(origPm);
+              const origSourceId =
+                (origPm === "credit"
+                  ? selectedTx.creditCardId
+                  : selectedTx.accountId || selectedTx.creditCardId) ||
+                origSources.find(
+                  (s) => s.name.toLowerCase() === (selectedTx.accountOrCard || "").toLowerCase()
+                )?.id ||
+                origSources[0]?.id ||
+                "";
+
               const origHidden = Boolean(selectedTx.isHidden);
               const origFixed = Boolean(selectedTx.isFixed);
               const origCatName = selectedTx.categoryName || "Geral";
               const origSplits = selectedTx.splits || [];
               const origSplitEnabled = origSplits.length > 0;
-              const origPersonIds = origSplits.map((s) => s.personId).sort().join(",");
-              const currentPersonIds = [...editTxPersonIds].sort().join(",");
+
+              const currentEditAmount = editTxCentsAmount > 0 ? editTxCentsAmount / 100 : selectedTx.amount;
+              const computeEditSplitsList = () => {
+                if (!editTxIsSplitEnabled || editTxPersonIds.length === 0) return [];
+                const n = editTxPersonIds.length;
+                return editTxPersonIds.map((pid) => {
+                  const pObj = people.find((p) => p.id === pid);
+                  let owed = 0;
+                  let pct = 0;
+                  if (editTxSplitMode === "equal") {
+                    owed = Number((currentEditAmount / (n + 1)).toFixed(2));
+                    pct = Math.round(100 / (n + 1));
+                  } else if (editTxSplitMode === "percent") {
+                    const friendsTotal = (currentEditAmount * editTxSplitPercentage) / 100;
+                    owed = Number((friendsTotal / n).toFixed(2));
+                    pct = Math.round(editTxSplitPercentage / n);
+                  } else {
+                    owed = Number(((editTxExactAmounts[pid] || 0) / 100).toFixed(2));
+                    pct = currentEditAmount > 0 ? Math.round((owed / currentEditAmount) * 100) : 0;
+                  }
+                  const existingSplit = origSplits.find((s) => s.personId === pid);
+                  return {
+                    personId: pid,
+                    personName: pObj?.name || "Amigo",
+                    personPixKey: pObj?.pixKey || pObj?.phone,
+                    amountOwed: owed,
+                    percentage: pct,
+                    direction: "receivable" as const,
+                    isPaid: existingSplit?.isPaid || false,
+                  };
+                });
+              };
+
+              const previewEditSplits = computeEditSplitsList();
+              const origSplitSignature = [...origSplits]
+                .sort((a, b) => a.personId.localeCompare(b.personId))
+                .map((s) => `${s.personId}:${Math.round(s.amountOwed * 100)}`)
+                .join(",");
+              const currentSplitSignature = [...previewEditSplits]
+                .sort((a, b) => a.personId.localeCompare(b.personId))
+                .map((s) => `${s.personId}:${Math.round(s.amountOwed * 100)}`)
+                .join(",");
 
               const isInstallmentChanged =
                 editTxInstallmentTotal !== origInstTotal ||
@@ -3673,7 +3901,7 @@ export function ExtratoClient({
 
               const isSplitChanged =
                 editTxIsSplitEnabled !== origSplitEnabled ||
-                (editTxIsSplitEnabled && currentPersonIds !== origPersonIds);
+                (editTxIsSplitEnabled && currentSplitSignature !== origSplitSignature);
 
               const hasChanges =
                 editTxTitle.trim() !== selectedTx.title.trim() ||
@@ -3681,6 +3909,7 @@ export function ExtratoClient({
                 editTxDate !== origDate ||
                 editTxTime !== origTime ||
                 editTxPaymentMethod !== origPm ||
+                effectiveEditSourceId !== origSourceId ||
                 editTxIsHidden !== origHidden ||
                 editTxIsFixed !== origFixed ||
                 editTxCategoryName !== origCatName ||
@@ -3694,24 +3923,40 @@ export function ExtratoClient({
                     ? editTxTotalCentsAmount / 100
                     : newAmount * editTxInstallmentTotal;
                 const newTitle = editTxTitle.trim() || selectedTx.title;
-                const newDate = `${editTxDate}T${editTxTime}:00`;
+                const newDate = `${editTxDate}T${editTxTime || "12:00"}:00`;
+
+                // Conta / Cartão selecionado
+                const selectedSourceObj = editFilteredSources.find((s) => s.id === effectiveEditSourceId);
+                let newAccountId: string | null = null;
+                let newCreditCardId: string | null = null;
+                let newAccountOrCard = "Dinheiro em Espécie";
+                let newAccountType = "cash";
+
+                if (editTxPaymentMethod === "credit") {
+                  newCreditCardId = effectiveEditSourceId || null;
+                  newAccountOrCard = selectedSourceObj?.name || "Cartão de Crédito";
+                  newAccountType = "credit";
+                } else if (editTxPaymentMethod === "vr" || editTxPaymentMethod === "va") {
+                  const isCard = availableCards.some((c) => c.id === effectiveEditSourceId);
+                  if (isCard) {
+                    newCreditCardId = effectiveEditSourceId || null;
+                  } else {
+                    newAccountId = effectiveEditSourceId || null;
+                  }
+                  newAccountOrCard =
+                    selectedSourceObj?.name ||
+                    (editTxPaymentMethod === "va" ? "Vale Alimentação (VA)" : "Vale Refeição (VR)");
+                  newAccountType = editTxPaymentMethod;
+                } else if (editTxPaymentMethod !== "cash") {
+                  newAccountId = effectiveEditSourceId || null;
+                  newAccountOrCard = selectedSourceObj?.name || "Conta";
+                  newAccountType = selectedSourceObj?.type || "checking";
+                }
 
                 // Cálculo do rateio (splits)
                 let newSplits: TransactionSplit[] | undefined = undefined;
                 if (editTxIsSplitEnabled && editTxPersonIds.length > 0) {
-                  const perPerson = newAmount / (editTxPersonIds.length + 1);
-                  newSplits = editTxPersonIds.map((pid) => {
-                    const pObj = people.find((p) => p.id === pid);
-                    return {
-                      personId: pid,
-                      personName: pObj?.name || "Amigo",
-                      personPixKey: pObj?.pixKey || pObj?.phone,
-                      amountOwed: perPerson,
-                      percentage: Math.round(100 / (editTxPersonIds.length + 1)),
-                      direction: "receivable",
-                      isPaid: false,
-                    };
-                  });
+                  newSplits = previewEditSplits;
                 } else if (!editTxIsSplitEnabled) {
                   newSplits = [];
                 }
@@ -3724,6 +3969,11 @@ export function ExtratoClient({
                   installmentTotal: editTxInstallmentTotal,
                   transactionDate: newDate,
                   paymentMethod: editTxPaymentMethod,
+                  accountId: newAccountId || undefined,
+                  creditCardId: newCreditCardId || undefined,
+                  accountOrCard: newAccountOrCard,
+                  accountName: newAccountOrCard,
+                  accountType: newAccountType,
                   isHidden: editTxIsHidden,
                   isFixed: editTxIsFixed,
                   categoryName: editTxCategoryName,
@@ -3747,6 +3997,11 @@ export function ExtratoClient({
                         originalTotalAmount: newTotalAmount,
                         installmentTotal: editTxInstallmentTotal,
                         paymentMethod: editTxPaymentMethod,
+                        accountId: newAccountId || undefined,
+                        creditCardId: newCreditCardId || undefined,
+                        accountOrCard: newAccountOrCard,
+                        accountName: newAccountOrCard,
+                        accountType: newAccountType,
                         isHidden: editTxIsHidden,
                         categoryName: editTxCategoryName,
                         categoryIcon: editTxCategoryIcon,
@@ -3764,6 +4019,8 @@ export function ExtratoClient({
                   amount: newAmount,
                   transactionDate: newDate,
                   paymentMethod: editTxPaymentMethod,
+                  accountId: newAccountId,
+                  creditCardId: newCreditCardId,
                   isFixed: editTxIsFixed,
                   isHidden: editTxIsHidden,
                   installmentTotal: editTxInstallmentTotal,
@@ -3772,7 +4029,7 @@ export function ExtratoClient({
                   splits: newSplits?.map((s) => ({
                     personId: s.personId,
                     amountOwed: s.amountOwed,
-                    percentage: 0,
+                    percentage: s.percentage || 0,
                     isPaid: s.isPaid,
                   })),
                   categoryId: editTxCategoryId
@@ -3975,31 +4232,59 @@ export function ExtratoClient({
                           </div>
                         )}
 
-                        {/* Data */}
-                        <div
-                          onClick={() => {
-                            try {
-                              editDatePickerRef.current?.showPicker();
-                            } catch {
-                              editDatePickerRef.current?.focus();
-                            }
-                          }}
-                          className="relative rounded-2xl border border-white/10 bg-transparent px-4 py-3.5 flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors"
-                        >
-                          <span className="absolute -top-2.5 left-4 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
-                            Data
-                          </span>
-                          <span className="text-sm sm:text-base font-medium text-white">
-                            {formatMediumPortugueseDate(editTxDate)}
-                          </span>
-                          <Calendar className="w-5 h-5 text-zinc-400 shrink-0" />
-                          <input
-                            ref={editDatePickerRef}
-                            type="date"
-                            value={editTxDate}
-                            onChange={(e) => setEditTxDate(e.target.value)}
-                            className="sr-only absolute pointer-events-none"
-                          />
+                        {/* Data e Horário */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div
+                            onClick={() => {
+                              try {
+                                editDatePickerRef.current?.showPicker();
+                              } catch {
+                                editDatePickerRef.current?.focus();
+                              }
+                            }}
+                            className="relative rounded-2xl border border-white/10 bg-transparent px-3.5 py-3.5 flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors min-w-0"
+                          >
+                            <span className="absolute -top-2.5 left-3.5 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                              Data
+                            </span>
+                            <span className="text-xs sm:text-sm font-medium text-white truncate pr-1">
+                              {formatMediumPortugueseDate(editTxDate)}
+                            </span>
+                            <Calendar className="w-4 h-4 text-zinc-400 shrink-0" />
+                            <input
+                              ref={editDatePickerRef}
+                              type="date"
+                              value={editTxDate}
+                              onChange={(e) => setEditTxDate(e.target.value)}
+                              className="sr-only absolute pointer-events-none"
+                            />
+                          </div>
+
+                          <div
+                            onClick={() => {
+                              try {
+                                editTimePickerRef.current?.showPicker();
+                              } catch {
+                                editTimePickerRef.current?.focus();
+                              }
+                            }}
+                            className="relative rounded-2xl border border-white/10 bg-transparent px-3.5 py-3.5 flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors min-w-0"
+                          >
+                            <span className="absolute -top-2.5 left-3.5 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                              Horário
+                            </span>
+                            <span className="text-xs sm:text-sm font-medium text-white font-mono">
+                              {editTxTime || "12:00"}
+                            </span>
+                            <Clock className="w-4 h-4 text-zinc-400 shrink-0" />
+                            <input
+                              ref={editTimePickerRef}
+                              type="time"
+                              value={editTxTime || "12:00"}
+                              onChange={(e) => setEditTxTime(e.target.value)}
+                              className="sr-only absolute pointer-events-none"
+                            />
+                          </div>
                         </div>
 
                         {/* Categoria */}
@@ -4044,7 +4329,13 @@ export function ExtratoClient({
                                 <button
                                   key={pm.id}
                                   type="button"
-                                  onClick={() => setEditTxPaymentMethod(pm.id)}
+                                  onClick={() => {
+                                    setEditTxPaymentMethod(pm.id);
+                                    const nextSources = getFilteredSourcesForMethod(pm.id);
+                                    if (!nextSources.some((s) => s.id === editTxSourceId)) {
+                                      setEditTxSourceId(nextSources[0]?.id || "");
+                                    }
+                                  }}
                                   className={`p-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left ${
                                     isSelected
                                       ? "bg-white text-black shadow-md font-bold"
@@ -4056,6 +4347,49 @@ export function ExtratoClient({
                               );
                             })}
                           </div>
+
+                          {/* Opções da Forma de Pagamento (Conta ou Cartão) */}
+                          {editTxPaymentMethod !== "cash" && (
+                            <div className="mt-3.5 pt-3 border-t border-white/10 flex flex-col gap-2">
+                              <span className="text-[11px] font-medium text-zinc-400">
+                                {editTxPaymentMethod === "credit"
+                                  ? "Qual cartão de crédito?"
+                                  : editTxPaymentMethod === "vr"
+                                  ? "Qual cartão / conta VR?"
+                                  : editTxPaymentMethod === "va"
+                                  ? "Qual cartão / conta VA?"
+                                  : "Qual conta?"}
+                              </span>
+
+                              {editTxPaymentMethod === "credit" && editFilteredSources.length === 0 ? (
+                                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center gap-2 text-xs text-amber-300">
+                                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                                  <span>Nenhum cartão de crédito cadastrado.</span>
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {editFilteredSources.map((src) => {
+                                    const isSrcSelected = effectiveEditSourceId === src.id;
+                                    return (
+                                      <button
+                                        key={src.id}
+                                        type="button"
+                                        onClick={() => setEditTxSourceId(src.id)}
+                                        className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                          isSrcSelected
+                                            ? "bg-[#ccff00] text-black font-bold shadow-sm"
+                                            : "bg-[#141418] border border-white/5 text-zinc-300 hover:text-white hover:border-white/15"
+                                        }`}
+                                      >
+                                        {isSrcSelected && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
+                                        <span>{src.name}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -4207,36 +4541,189 @@ export function ExtratoClient({
                               })}
                             </div>
 
-                            {/* Detalhamento do cálculo em tempo real */}
-                            {(() => {
+                            {/* Opções de como rachar e cálculo em tempo real */}
+                            {editTxPersonIds.length > 0 ? (() => {
                               const totalParticipants = editTxPersonIds.length + 1;
-                              const currentAmountToDivide =
-                                editTxCentsAmount > 0 ? editTxCentsAmount / 100 : selectedTx.amount;
-                              const perPersonShare =
-                                totalParticipants > 0
-                                  ? currentAmountToDivide / totalParticipants
-                                  : currentAmountToDivide;
+                              const totalFriendsOwed = previewEditSplits.reduce(
+                                (acc, s) => acc + s.amountOwed,
+                                0
+                              );
+                              const myShare = Math.max(0, currentEditAmount - totalFriendsOwed);
                               return (
-                                <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col gap-1 text-xs">
-                                  <div className="flex items-center justify-between text-zinc-400">
-                                    <span>Dividido entre:</span>
-                                    <span className="text-white font-semibold">
-                                      {totalParticipants} pessoa{totalParticipants > 1 ? "s" : ""} (Você + {editTxPersonIds.length})
-                                    </span>
+                                <div className="flex flex-col gap-2.5 pt-2 border-t border-white/[0.06]">
+                                  <span className="text-xs text-zinc-400 font-medium">
+                                    Como dividir entre Você e {editTxPersonIds.length} amigo{editTxPersonIds.length > 1 ? "s" : ""}?
+                                  </span>
+
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditTxSplitMode("equal")}
+                                      className={`py-2 px-1.5 rounded-xl text-[11px] font-semibold border transition text-center cursor-pointer ${
+                                        editTxSplitMode === "equal"
+                                          ? "bg-white text-black border-white shadow-sm font-bold"
+                                          : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
+                                      }`}
+                                    >
+                                      Igual p/ todos
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditTxSplitMode("percent");
+                                        setEditTxSplitPercentage(50);
+                                      }}
+                                      className={`py-2 px-1.5 rounded-xl text-[11px] font-semibold border transition text-center cursor-pointer ${
+                                        editTxSplitMode === "percent" && editTxSplitPercentage === 50
+                                          ? "bg-white text-black border-white shadow-sm font-bold"
+                                          : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
+                                      }`}
+                                    >
+                                      50% p/ eles
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditTxSplitMode("percent");
+                                        setEditTxSplitPercentage(100);
+                                      }}
+                                      className={`py-2 px-1.5 rounded-xl text-[11px] font-semibold border transition text-center cursor-pointer ${
+                                        editTxSplitMode === "percent" && editTxSplitPercentage === 100
+                                          ? "bg-white text-black border-white shadow-sm font-bold"
+                                          : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
+                                      }`}
+                                    >
+                                      100% p/ eles
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditTxSplitMode("exact");
+                                        setEditTxExactAmounts((prev) => {
+                                          const next = { ...prev };
+                                          const defaultCents = Math.round(
+                                            (currentEditAmount / totalParticipants) * 100
+                                          );
+                                          editTxPersonIds.forEach((id) => {
+                                            if (next[id] === undefined) {
+                                              next[id] = defaultCents;
+                                            }
+                                          });
+                                          return next;
+                                        });
+                                      }}
+                                      className={`py-2 px-1.5 rounded-xl text-[11px] font-semibold border transition text-center cursor-pointer ${
+                                        editTxSplitMode === "exact"
+                                          ? "bg-white text-black border-white shadow-sm font-bold"
+                                          : "bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10"
+                                      }`}
+                                    >
+                                      Valores (R$)
+                                    </button>
                                   </div>
-                                  <div className="flex items-center justify-between text-emerald-300 font-bold">
-                                    <span>Cada amigo paga:</span>
-                                    <span className="font-sans">R$ {formatCurrency(perPersonShare)}</span>
-                                  </div>
-                                  <div className="flex items-center justify-between text-zinc-300">
-                                    <span>Sua parte:</span>
-                                    <span className="font-bold text-white font-sans">
-                                      R$ {formatCurrency(perPersonShare)}
-                                    </span>
+
+                                  {/* Porcentagem personalizada */}
+                                  {editTxSplitMode === "percent" && (
+                                    <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-black/50 border border-white/10 text-xs">
+                                      <span className="text-zinc-400">Total a repassar aos amigos:</span>
+                                      <div className="flex items-center gap-1 font-bold text-white">
+                                        <input
+                                          type="number"
+                                          min="1"
+                                          max="100"
+                                          value={editTxSplitPercentage}
+                                          onChange={(e) => {
+                                            const v = parseInt(e.target.value || "50", 10);
+                                            setEditTxSplitPercentage(Math.min(100, Math.max(1, v)));
+                                          }}
+                                          className="w-12 bg-transparent text-right focus:outline-none text-white font-mono"
+                                        />
+                                        <span>%</span>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Valores exatos por amigo */}
+                                  {editTxSplitMode === "exact" && (
+                                    <div className="flex flex-col gap-1.5">
+                                      {editTxPersonIds.map((pId) => {
+                                        const pObj = people.find((p) => p.id === pId);
+                                        const cVal = editTxExactAmounts[pId] ?? 0;
+                                        return (
+                                          <div
+                                            key={pId}
+                                            className="flex items-center justify-between px-3 py-2 rounded-xl bg-black/50 border border-white/10 text-xs"
+                                          >
+                                            <span className="text-zinc-300 font-medium truncate pr-2">
+                                              {pObj?.name || "Amigo"}
+                                            </span>
+                                            <div className="flex items-center gap-1 font-mono font-bold text-white shrink-0">
+                                              <span className="text-zinc-500">R$</span>
+                                              <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                value={(cVal / 100).toLocaleString("pt-BR", {
+                                                  minimumFractionDigits: 2,
+                                                })}
+                                                onChange={(e) => {
+                                                  const digits = e.target.value.replace(/\D/g, "");
+                                                  const cents = digits ? parseInt(digits, 10) : 0;
+                                                  setEditTxExactAmounts((prev) => ({
+                                                    ...prev,
+                                                    [pId]: cents,
+                                                  }));
+                                                }}
+                                                className="w-20 bg-transparent text-right focus:outline-none text-emerald-400"
+                                              />
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                      {totalFriendsOwed > currentEditAmount && currentEditAmount > 0 && (
+                                        <span className="text-[11px] text-amber-400 px-1">
+                                          A soma dos amigos (R$ {formatCurrency(totalFriendsOwed)}) excede o valor total.
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Resumo do rateio */}
+                                  <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-col gap-1 text-xs">
+                                    <div className="flex items-center justify-between text-zinc-400">
+                                      <span>Dividido entre:</span>
+                                      <span className="text-white font-semibold">
+                                        {totalParticipants} pessoa{totalParticipants > 1 ? "s" : ""} (Você + {editTxPersonIds.length})
+                                      </span>
+                                    </div>
+                                    {editTxSplitMode !== "exact" && previewEditSplits[0] && (
+                                      <div className="flex items-center justify-between text-emerald-300 font-bold">
+                                        <span>Cada amigo paga ({previewEditSplits[0].percentage}%):</span>
+                                        <span className="font-sans">
+                                          R$ {formatCurrency(previewEditSplits[0].amountOwed)}
+                                        </span>
+                                      </div>
+                                    )}
+                                    <div className="flex items-center justify-between text-zinc-300">
+                                      <span>Sua parte:</span>
+                                      <span className="font-bold text-white font-sans">
+                                        R$ {formatCurrency(myShare)}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-emerald-400 font-bold">
+                                      <span>Total a receber:</span>
+                                      <span className="font-sans">
+                                        R$ {formatCurrency(totalFriendsOwed)}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
                               );
-                            })()}
+                            })() : (
+                              <div className="py-2 px-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                                <span>Selecione ao menos uma pessoa para dividir o gasto.</span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

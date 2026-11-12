@@ -675,6 +675,12 @@ export async function getExtratoData(): Promise<ExtratoData> {
     const parcelAmount = isTotalStored ? 251.05 : Number(t.amount || 0);
     const originalTotalAmount = isTotalStored ? 2510.5 : parcelAmount * totalInst;
 
+    const extractHoraSuffix = (rawTags: unknown): string => {
+      if (!Array.isArray(rawTags)) return "";
+      const horaTag = rawTags.find((tg) => typeof tg === "string" && tg.startsWith("#hora_"));
+      return horaTag ? `T${horaTag.replace("#hora_", "")}:00` : "";
+    };
+
     if (!isInstallment) {
       const parts = (t.transaction_date || "").split("-");
       const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}` : t.transaction_date;
@@ -694,7 +700,7 @@ export async function getExtratoData(): Promise<ExtratoData> {
         accountType,
         installmentNumber: 1,
         installmentTotal: 1,
-        transactionDate: t.transaction_date,
+        transactionDate: `${t.transaction_date}${extractHoraSuffix(t.tags)}`,
         formattedDate,
         dateGroup: t.transaction_date,
         status: t.status || "paid",
@@ -792,7 +798,7 @@ export async function getExtratoData(): Promise<ExtratoData> {
           installmentNumber: instNum,
           installmentTotal: totalInst,
           installmentSchedule: schedule,
-          transactionDate: instDate,
+          transactionDate: `${instDate}${extractHoraSuffix(ep.tags)}`,
           formattedDate,
           dateGroup: instDate,
           status: isPaid ? "paid" : "pending",
@@ -849,7 +855,7 @@ export async function getExtratoData(): Promise<ExtratoData> {
           installmentNumber: i,
           installmentTotal: totalInst,
           installmentSchedule: schedule,
-          transactionDate: instDate,
+          transactionDate: `${instDate}${extractHoraSuffix(t.tags)}`,
           formattedDate,
           dateGroup: instDate,
           status: isPaid ? "paid" : "pending",
@@ -1007,6 +1013,16 @@ export async function createTransaction(payload: {
       notesText = `Recebimento fixo todo dia ${payload.fixedRule.dayOfMonth}. (${adjText})`;
     }
 
+    const dateOnly = payload.transactionDate.includes("T")
+      ? payload.transactionDate.split("T")[0]
+      : payload.transactionDate;
+    const timePart = payload.transactionDate.includes("T")
+      ? payload.transactionDate.split("T")[1]?.slice(0, 5)
+      : undefined;
+    if (timePart) {
+      tags.push(`#hora_${timePart}`);
+    }
+
     const totalInstallments =
       payload.installmentTotal && payload.installmentTotal > 1
         ? payload.installmentTotal
@@ -1021,7 +1037,7 @@ export async function createTransaction(payload: {
       // Monta cronograma
       const schedule: InstallmentScheduleItem[] = [];
       for (let i = 1; i <= totalInstallments; i++) {
-        const iDate = addMonths(payload.transactionDate, i - 1);
+        const iDate = addMonths(dateOnly, i - 1);
         const p = iDate.split("-");
         const formatted = p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iDate;
         schedule.push({
@@ -1036,7 +1052,7 @@ export async function createTransaction(payload: {
 
       const installmentRows = [];
       for (let i = 1; i <= totalInstallments; i++) {
-        const instDate = addMonths(payload.transactionDate, i - 1);
+        const instDate = addMonths(dateOnly, i - 1);
         installmentRows.push({
           user_id: userId,
           description: payload.description,
@@ -1136,7 +1152,7 @@ export async function createTransaction(payload: {
         amount: payload.amount,
         type: payload.type,
         payment_method: payload.paymentMethod,
-        transaction_date: payload.transactionDate,
+        transaction_date: dateOnly,
         category_id: payload.categoryId && payload.categoryId.startsWith("cat-") ? null : payload.categoryId || null,
         account_id: payload.accountId && payload.accountId.startsWith("acc-") ? null : payload.accountId || null,
         credit_card_id: payload.creditCardId && payload.creditCardId.startsWith("card-") ? null : payload.creditCardId || null,
@@ -1225,6 +1241,8 @@ export async function updateTransaction(
     categoryId?: string;
     isFixed?: boolean;
     paymentMethod?: string;
+    accountId?: string | null;
+    creditCardId?: string | null;
     transactionDate?: string;
     isHidden?: boolean;
     installmentTotal?: number;
@@ -1241,25 +1259,54 @@ export async function updateTransaction(
     if (updates.categoryId !== undefined) payload.category_id = updates.categoryId;
     if (updates.isFixed !== undefined) payload.is_fixed = updates.isFixed;
     if (updates.paymentMethod !== undefined) payload.payment_method = updates.paymentMethod;
-    if (updates.transactionDate !== undefined) payload.transaction_date = updates.transactionDate;
+    if (updates.accountId !== undefined) {
+      payload.account_id =
+        updates.accountId && !updates.accountId.startsWith("acc-") ? updates.accountId : null;
+    }
+    if (updates.creditCardId !== undefined) {
+      payload.credit_card_id =
+        updates.creditCardId && !updates.creditCardId.startsWith("card-")
+          ? updates.creditCardId
+          : null;
+    }
+
+    let timeTagToSet: string | undefined;
+    if (updates.transactionDate !== undefined) {
+      const dateOnly = updates.transactionDate.includes("T")
+        ? updates.transactionDate.split("T")[0]
+        : updates.transactionDate;
+      payload.transaction_date = dateOnly;
+      if (updates.transactionDate.includes("T")) {
+        const timePart = updates.transactionDate.split("T")[1]?.slice(0, 5);
+        if (timePart) timeTagToSet = `#hora_${timePart}`;
+      }
+    }
+
     if (updates.installmentTotal !== undefined) payload.installment_total = updates.installmentTotal;
-    if (updates.isHidden !== undefined) {
+    if (updates.isHidden !== undefined || timeTagToSet !== undefined) {
       try {
         const { data: currentTx } = await supabase
           .from("transactions")
           .select("tags")
           .eq("id", transactionId)
           .single();
-        const currentTags: string[] = Array.isArray(currentTx?.tags) ? currentTx.tags : [];
-        if (updates.isHidden) {
-          if (!currentTags.includes("hidden")) {
-            payload.tags = [...currentTags, "hidden"];
+        let nextTags: string[] = Array.isArray(currentTx?.tags) ? [...currentTx.tags] : [];
+        if (updates.isHidden !== undefined) {
+          if (updates.isHidden) {
+            if (!nextTags.includes("hidden")) {
+              nextTags.push("hidden");
+            }
+          } else {
+            nextTags = nextTags.filter((t: string) => t !== "hidden");
           }
-        } else {
-          payload.tags = currentTags.filter((t: string) => t !== "hidden");
         }
+        if (timeTagToSet !== undefined) {
+          nextTags = nextTags.filter((t: string) => !t.startsWith("#hora_"));
+          nextTags.push(timeTagToSet);
+        }
+        payload.tags = nextTags;
       } catch (tagErr) {
-        console.warn("Could not update tags for isHidden:", tagErr);
+        console.warn("Could not update tags:", tagErr);
       }
     }
 
@@ -1301,6 +1348,8 @@ export async function updateTransaction(
           if (updates.amount !== undefined) groupPayload.amount = updates.amount;
           if (updates.categoryId !== undefined) groupPayload.category_id = updates.categoryId;
           if (updates.paymentMethod !== undefined) groupPayload.payment_method = updates.paymentMethod;
+          if (updates.accountId !== undefined) groupPayload.account_id = payload.account_id;
+          if (updates.creditCardId !== undefined) groupPayload.credit_card_id = payload.credit_card_id;
           if (updates.installmentTotal !== undefined) groupPayload.installment_total = updates.installmentTotal;
           await supabase
             .from("transactions")
