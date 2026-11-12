@@ -5,6 +5,12 @@ export interface Transaction {
   amount: number;
   type: "income" | "expense";
   categoryIcon?: "cart" | "pix" | "music" | "car" | "pill" | "food" | "heart" | "dumbbell" | "tag" | string;
+  categoryName?: string;
+  categoryColor?: string;
+  transactionDate?: string;
+  formattedDate?: string;
+  accountId?: string;
+  accountName?: string;
   domain?: string;
 }
 

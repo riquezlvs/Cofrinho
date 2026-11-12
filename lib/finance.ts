@@ -100,12 +100,16 @@ export async function getDashboardData(): Promise<DashboardData> {
     (sum, a) => sum + Number(a.balance || 0),
     0
   );
+  const totalAbsAccountsBalance = rawAccounts.reduce(
+    (sum, a) => sum + Math.abs(Number(a.balance || 0)),
+    0
+  );
 
   const accounts: AccountSummary[] = rawAccounts.map((a) => {
     const amt = Number(a.balance || 0);
     const pct =
-      totalAccountsBalance > 0
-        ? Math.round((amt / totalAccountsBalance) * 100)
+      totalAbsAccountsBalance > 0
+        ? Math.round((Math.abs(amt) / totalAbsAccountsBalance) * 100)
         : 0;
 
     const nameLower = (a.name || "").toLowerCase();
@@ -114,6 +118,13 @@ export async function getDashboardData(): Promise<DashboardData> {
       logoType = "nubank";
     } else if (nameLower.includes("santander")) {
       logoType = "santander";
+    } else if (
+      nameLower.includes("pierre") ||
+      nameLower.includes("cofrinho") ||
+      nameLower.includes("carteira") ||
+      a.type === "cash"
+    ) {
+      logoType = "cofrinho";
     } else if (
       nameLower.includes("vr") ||
       nameLower.includes("va") ||
@@ -379,56 +390,79 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   const dailyFree = Number((finalSafeToSpend / remainingDays).toFixed(2));
 
-  // 11. Atividades Recentes (5 últimas com ícones correspondentes)
-  const recentTransactions: Transaction[] = rawTransactions.slice(0, 5).map((t) => {
-    let icon: Transaction["categoryIcon"] = "cart";
-    const desc = (t.description || "").toLowerCase();
+  // 11. Atividades Recentes (últimas transações reais com dados completos para widget e detalhes)
+  const formatLongDate = (dateStr?: string | null) => {
+    if (!dateStr) return "";
+    const [y, m, d] = dateStr.split("T")[0].split("-");
+    if (!y || !m || !d) return dateStr;
+    const mIdx = parseInt(m, 10) - 1;
+    const mName = (monthNames[mIdx] || "").toLowerCase();
+    return `${d.padStart(2, "0")} de ${mName}`;
+  };
 
-    if (t.type === "income" || t.payment_method === "pix") {
-      icon = "pix";
-    } else if (
-      desc.includes("spotify") ||
-      desc.includes("música") ||
-      desc.includes("streaming") ||
-      desc.includes("netflix")
-    ) {
-      icon = "music";
-    } else if (
-      desc.includes("uber") ||
-      desc.includes("transporte") ||
-      desc.includes("posto") ||
-      desc.includes("combustível")
-    ) {
-      icon = "car";
-    } else if (
-      desc.includes("farmácia") ||
-      desc.includes("drogaria") ||
-      desc.includes("saúde")
-    ) {
-      icon = "pill";
-    } else if (
-      desc.includes("mercado") ||
-      desc.includes("hortifruti") ||
-      desc.includes("açúcar") ||
-      desc.includes("comida")
-    ) {
-      icon = "cart";
-    }
+  const accountNameById = new Map(rawAccounts.map((a) => [a.id, a.name]));
 
-    let methodLabel = "Cartão de Crédito";
-    if (t.payment_method === "debit") methodLabel = "Cartão de Débito";
-    else if (t.payment_method === "pix") methodLabel = "Pix";
-    else if (t.is_fixed) methodLabel = "Assinatura mensal";
+  const recentTransactions: Transaction[] = rawTransactions
+    .filter((t) => !t.is_hidden)
+    .slice(0, 10)
+    .map((t) => {
+      let icon: Transaction["categoryIcon"] = t.category?.icon || "cart";
+      const desc = (t.description || "").toLowerCase();
 
-    return {
-      id: t.id,
-      title: t.description,
-      description: `${methodLabel} • ${t.transaction_date}`,
-      amount: Number(t.amount || 0),
-      type: t.type,
-      categoryIcon: icon,
-    };
-  });
+      if (!t.category?.icon) {
+        if (t.type === "income" || t.payment_method === "pix") {
+          icon = "pix";
+        } else if (
+          desc.includes("spotify") ||
+          desc.includes("música") ||
+          desc.includes("streaming") ||
+          desc.includes("netflix")
+        ) {
+          icon = "music";
+        } else if (
+          desc.includes("uber") ||
+          desc.includes("transporte") ||
+          desc.includes("posto") ||
+          desc.includes("combustível")
+        ) {
+          icon = "car";
+        } else if (
+          desc.includes("farmácia") ||
+          desc.includes("drogaria") ||
+          desc.includes("saúde")
+        ) {
+          icon = "pill";
+        } else if (
+          desc.includes("mercado") ||
+          desc.includes("hortifruti") ||
+          desc.includes("açúcar") ||
+          desc.includes("comida")
+        ) {
+          icon = "cart";
+        }
+      }
+
+      let methodLabel = "Cartão de Crédito";
+      if (t.payment_method === "debit") methodLabel = "Cartão de Débito";
+      else if (t.payment_method === "pix") methodLabel = "Pix";
+      else if (t.payment_method === "cash") methodLabel = "Dinheiro";
+      else if (t.is_fixed) methodLabel = "Assinatura mensal";
+
+      return {
+        id: t.id,
+        title: t.description,
+        description: `${methodLabel} • ${t.transaction_date}`,
+        amount: Number(t.amount || 0),
+        type: t.type,
+        categoryIcon: icon,
+        categoryName: t.category?.name || (t.type === "income" ? "Receita" : "Outros"),
+        categoryColor: t.category?.color || undefined,
+        transactionDate: t.transaction_date,
+        formattedDate: formatLongDate(t.transaction_date),
+        accountId: t.account_id || undefined,
+        accountName: t.account_id ? accountNameById.get(t.account_id) : undefined,
+      };
+    });
 
   return {
     userName,
@@ -1438,6 +1472,86 @@ export async function deleteCreditCard(cardId: string): Promise<{ success: boole
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro desconhecido";
     console.error("Erro interno ao deletar cartão:", err);
+    return { success: false, error: message };
+  }
+}
+
+export async function createAccount(payload: {
+  name: string;
+  type: "checking" | "savings" | "vr" | "va" | "cash";
+  balance: number;
+  color?: string;
+}): Promise<{ success: boolean; data?: AccountSummary; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+    const { data: usersData } = await supabase.auth.admin.listUsers();
+    const userId = usersData?.users?.[0]?.id;
+
+    if (!userId) {
+      return { success: false, error: "Usuário não encontrado no sistema." };
+    }
+
+    const isIsolated = payload.type === "vr" || payload.type === "va";
+    const { data, error } = await supabase
+      .from("accounts")
+      .insert({
+        user_id: userId,
+        name: payload.name.trim(),
+        type: payload.type,
+        balance: Number(payload.balance || 0),
+        is_isolated: isIsolated,
+        color: payload.color || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Erro ao criar conta:", error);
+      return { success: false, error: error.message };
+    }
+
+    const nameLower = (data.name || "").toLowerCase();
+    let logoType: AccountSummary["logoType"] = "other";
+    if (nameLower.includes("nubank") || nameLower.includes("nu ")) {
+      logoType = "nubank";
+    } else if (nameLower.includes("santander")) {
+      logoType = "santander";
+    } else if (
+      nameLower.includes("pierre") ||
+      nameLower.includes("cofrinho") ||
+      nameLower.includes("carteira") ||
+      data.type === "cash"
+    ) {
+      logoType = "cofrinho";
+    } else if (
+      nameLower.includes("vr") ||
+      nameLower.includes("va") ||
+      nameLower.includes("refeição") ||
+      nameLower.includes("alimentação") ||
+      data.type === "vr" ||
+      data.type === "va"
+    ) {
+      logoType = "vr";
+    }
+
+    return {
+      success: true,
+      data: {
+        id: data.id,
+        name: data.name,
+        type: data.type,
+        amount: Number(data.balance || 0),
+        percentage: 0,
+        isIsolated: Boolean(data.is_isolated),
+        color: data.color,
+        icon: data.icon,
+        updatedAt: "Atualizado agora",
+        logoType,
+      },
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    console.error("Erro interno ao criar conta:", err);
     return { success: false, error: message };
   }
 }

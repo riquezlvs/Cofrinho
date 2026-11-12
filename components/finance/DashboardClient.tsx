@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { TopHeader, SegmentedFilterPills, SegmentType } from "@/components/finance/TopHeader";
 import { BankCardsCarousel } from "@/components/finance/BankCardsCarousel";
 import { AccountsOverviewCard } from "@/components/finance/AccountsOverviewCard";
+import { AccountsDetailsScreen } from "@/components/finance/AccountsDetailsScreen";
 import { MonthlySpendingCard } from "@/components/finance/MonthlySpendingCard";
 import { BentoDashboardGrid } from "@/components/finance/BentoDashboardGrid";
 import { FloatingCofrinhoDock } from "@/components/finance/FloatingCofrinhoDock";
 import { CardsTabClient } from "@/components/finance/CardsTabClient";
-import { DashboardData, CreditCardSummary } from "@/types/finance";
+import { DashboardData, CreditCardSummary, AccountSummary } from "@/types/finance";
 import { TrendingUp } from "lucide-react";
 
 export interface DashboardClientProps {
@@ -38,12 +39,34 @@ export function DashboardClient({
   const isPrivacyHidden = externalPrivacy !== undefined ? externalPrivacy : internalPrivacy;
   const [selectedSegment, setSelectedSegment] = useState<SegmentType>("contas");
   const [cards, setCards] = useState<CreditCardSummary[]>(initialData.creditCards || []);
+  const [extraAccounts, setExtraAccounts] = useState<AccountSummary[]>([]);
+  const [isAccountsDetailsOpen, setIsAccountsDetailsOpen] = useState(false);
   const [isGreetingScrolledOut, setIsGreetingScrolledOut] = useState(false);
 
   const greetingRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const userName = initialData.userName || "João";
+
+  const accounts = [
+    ...(initialData.accounts || []),
+    ...extraAccounts.filter(
+      (extra) => !(initialData.accounts || []).some((a) => a.id === extra.id)
+    ),
+  ];
+
+  const totalAccountsBalance = accounts.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+  const totalAbsAccountsBalance = accounts.reduce(
+    (sum, a) => sum + Math.abs(Number(a.amount || 0)),
+    0
+  );
+  const accountsWithPercentages: AccountSummary[] = accounts.map((a) => ({
+    ...a,
+    percentage:
+      totalAbsAccountsBalance > 0
+        ? Math.round((Math.abs(Number(a.amount || 0)) / totalAbsAccountsBalance) * 100)
+        : 0,
+  }));
 
   const totalInvoices = cards.reduce((acc, c) => acc + (c.spent || 0), 0);
   const activeDefaultCard =
@@ -223,12 +246,12 @@ export function DashboardClient({
               onOpenInvoices={() => setSelectedSegment("cartoes")}
             />
 
-            {/* 2. Cartão de Saldo em Contas (Refletindo contas reais do Supabase: Nubank, VR, etc.) */}
+            {/* 2. Cartão de Saldo em Contas (Refletindo contas reais do Supabase) */}
             <AccountsOverviewCard
-              totalBalance={initialData.totalAccountsBalance}
-              accounts={initialData.accounts}
+              totalBalance={totalAccountsBalance}
+              accounts={accountsWithPercentages}
               isPrivacyHidden={isPrivacyHidden}
-              onOpenDetails={handleNavigateExtrato}
+              onOpenDetails={() => setIsAccountsDetailsOpen(true)}
             />
 
             {/* 3. Cartão Largura Total: Gastos do Mês com barra verde neon e marcador dinâmico */}
@@ -257,12 +280,28 @@ export function DashboardClient({
             <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl liquid-glass border border-white/[0.08] text-xs text-zinc-300 font-medium pb-2 shadow-sm min-h-[44px]">
               <span className="text-base">💡</span>
               <span className={isPrivacyHidden ? "balance-blur" : ""}>
-                R$ {formatCurrency(initialData.totalAccountsBalance)} parado poderia render mais em um cofrinho
+                R$ {formatCurrency(totalAccountsBalance)} parado poderia render mais em um cofrinho
               </span>
             </div>
           </>
         )}
       </div>
+
+      {/* Tela de Detalhes de Saldos em Contas */}
+      <AccountsDetailsScreen
+        isOpen={isAccountsDetailsOpen}
+        onClose={() => setIsAccountsDetailsOpen(false)}
+        accounts={accountsWithPercentages}
+        totalBalance={totalAccountsBalance}
+        recentTransactions={initialData.recentTransactions || []}
+        isPrivacyHidden={isPrivacyHidden}
+        onTogglePrivacy={handleTogglePrivacy}
+        onViewAllTransactions={handleNavigateExtrato}
+        onAccountAdded={(newAcc) => {
+          setExtraAccounts((prev) => [...prev, newAcc]);
+          router.refresh();
+        }}
+      />
     </>
   );
 
