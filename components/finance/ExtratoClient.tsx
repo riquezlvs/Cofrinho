@@ -4234,17 +4234,8 @@ export function ExtratoClient({
 
                         {/* Data e Horário */}
                         <div className="grid grid-cols-2 gap-3">
-                          <div
-                            onClick={() => {
-                              try {
-                                editDatePickerRef.current?.showPicker();
-                              } catch {
-                                editDatePickerRef.current?.focus();
-                              }
-                            }}
-                            className="relative rounded-2xl border border-white/10 bg-transparent px-3.5 py-3.5 flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors min-w-0"
-                          >
-                            <span className="absolute -top-2.5 left-3.5 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                          <div className="relative rounded-2xl border border-white/10 bg-transparent px-3.5 py-3.5 flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors min-w-0">
+                            <span className="absolute -top-2.5 left-3.5 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none z-20 pointer-events-none">
                               Data
                             </span>
                             <span className="text-xs sm:text-sm font-medium text-white truncate pr-1">
@@ -4256,21 +4247,17 @@ export function ExtratoClient({
                               type="date"
                               value={editTxDate}
                               onChange={(e) => setEditTxDate(e.target.value)}
-                              className="sr-only absolute pointer-events-none"
+                              onClick={(e) => {
+                                try {
+                                  (e.currentTarget as HTMLInputElement).showPicker?.();
+                                } catch {}
+                              }}
+                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
                             />
                           </div>
 
-                          <div
-                            onClick={() => {
-                              try {
-                                editTimePickerRef.current?.showPicker();
-                              } catch {
-                                editTimePickerRef.current?.focus();
-                              }
-                            }}
-                            className="relative rounded-2xl border border-white/10 bg-transparent px-3.5 py-3.5 flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors min-w-0"
-                          >
-                            <span className="absolute -top-2.5 left-3.5 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none">
+                          <div className="relative rounded-2xl border border-white/10 bg-transparent px-3.5 py-3.5 flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors min-w-0">
+                            <span className="absolute -top-2.5 left-3.5 px-1.5 bg-black text-[11px] font-medium text-zinc-400 select-none z-20 pointer-events-none">
                               Horário
                             </span>
                             <span className="text-xs sm:text-sm font-medium text-white font-mono">
@@ -4282,7 +4269,12 @@ export function ExtratoClient({
                               type="time"
                               value={editTxTime || "12:00"}
                               onChange={(e) => setEditTxTime(e.target.value)}
-                              className="sr-only absolute pointer-events-none"
+                              onClick={(e) => {
+                                try {
+                                  (e.currentTarget as HTMLInputElement).showPicker?.();
+                                } catch {}
+                              }}
+                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
                             />
                           </div>
                         </div>
