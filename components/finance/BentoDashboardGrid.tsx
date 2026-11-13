@@ -1,8 +1,20 @@
 "use client";
 
 import React, { useState } from "react";
-import { CreditCardSummary, SubscriptionSummary, CategorySpend } from "@/types/finance";
+import {
+  CreditCardSummary,
+  SubscriptionSummary,
+  CategorySpend,
+  Person,
+  ExtratoTransaction,
+} from "@/types/finance";
 import { getGoogleFaviconUrl, detectBrand } from "@/lib/brands";
+import { Users } from "lucide-react";
+import {
+  computePeopleDebtSummary,
+  getPersonAvatarColor,
+  getPersonInitials,
+} from "@/lib/peopleSummary";
 
 interface BentoDashboardGridProps {
   isPrivacyHidden: boolean;
@@ -10,6 +22,8 @@ interface BentoDashboardGridProps {
   creditCards?: CreditCardSummary[];
   subscriptions: SubscriptionSummary;
   categories: CategorySpend[];
+  people?: Person[];
+  allTransactions?: ExtratoTransaction[];
   totalMonthSpent?: number;
   topCategoryName?: string;
   cashFlow?: {
@@ -125,6 +139,8 @@ export function BentoDashboardGrid({
   creditCards,
   subscriptions,
   categories,
+  people = [],
+  allTransactions = [],
   totalMonthSpent,
   topCategoryName = "Alimentação",
   cashFlow = {
@@ -532,6 +548,85 @@ export function BentoDashboardGrid({
                     : activeCats.length === 1
                     ? "1 categoria"
                     : `${activeCats.length} categorias`}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Widget 8: Pessoas (Cadastro e quanto cada um está devendo) */}
+        {(() => {
+          const { summaries, totalOwed, debtorsCount } = computePeopleDebtSummary(
+            people,
+            allTransactions
+          );
+          const previewPeople = summaries.slice(0, 3);
+
+          return (
+            <div
+              onClick={() => onWidgetClick?.("pessoas")}
+              className="rounded-[28px] liquid-glass-card p-4 sm:p-5 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300 active:scale-[0.98] select-none"
+            >
+              <div className="flex items-start justify-between">
+                {previewPeople.length > 0 ? (
+                  <div className="flex items-center -space-x-2.5">
+                    {previewPeople.map((entry) => (
+                      <div
+                        key={entry.person.id}
+                        style={{
+                          backgroundColor: getPersonAvatarColor(entry.person.name),
+                        }}
+                        className={`${
+                          previewPeople.length === 1
+                            ? "w-10 h-10 text-sm"
+                            : "w-9 h-9 text-xs"
+                        } rounded-full flex items-center justify-center font-bold text-white shadow-sm ring-2 ring-[#14141a] border border-white/10 shrink-0`}
+                        title={`${entry.person.name}${
+                          entry.totalOwed > 0
+                            ? `: R$ ${formatCurrency(entry.totalOwed)}`
+                            : ""
+                        }`}
+                      >
+                        {getPersonInitials(entry.person.name)}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-white/[0.08] border border-white/15 flex items-center justify-center text-zinc-300 group-hover:text-[#ccff00] group-hover:bg-[#ccff00]/10 transition-colors shadow-inner">
+                    <Users className="w-4 h-4" />
+                  </div>
+                )}
+
+                <svg
+                  className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors mt-1"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+
+              <div className="flex flex-col gap-0.5 pt-2">
+                <span className="text-xs font-medium text-zinc-400">Pessoas</span>
+                <span
+                  className={`text-xl sm:text-[22px] font-extrabold text-white tracking-tight leading-tight ${
+                    isPrivacyHidden ? "balance-blur" : ""
+                  }`}
+                >
+                  R$ {formatCurrency(totalOwed)}
+                </span>
+                <span className="text-[11px] font-medium text-zinc-400 mt-0.5">
+                  {summaries.length === 0
+                    ? "Nenhuma cadastrada"
+                    : debtorsCount > 0
+                    ? `${summaries.length} ${
+                        summaries.length === 1 ? "pessoa" : "pessoas"
+                      } • ${debtorsCount} devendo`
+                    : `${summaries.length} ${
+                        summaries.length === 1 ? "cadastrada" : "cadastradas"
+                      } • Tudo quitado`}
                 </span>
               </div>
             </div>

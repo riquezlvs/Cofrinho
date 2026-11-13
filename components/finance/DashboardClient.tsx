@@ -12,6 +12,7 @@ import { MonthlySpendingDetailsScreen } from "@/components/finance/MonthlySpendi
 import { SpendingDetailsScreen } from "@/components/finance/SpendingDetailsScreen";
 import { CardLimitsDetailsScreen, CardLimitsTab } from "@/components/finance/CardLimitsDetailsScreen";
 import { BentoDashboardGrid } from "@/components/finance/BentoDashboardGrid";
+import { PeopleDetailsScreen } from "@/components/finance/PeopleDetailsScreen";
 import { RecentTransactionsCard } from "@/components/finance/RecentTransactionsCard";
 import { FloatingCofrinhoDock } from "@/components/finance/FloatingCofrinhoDock";
 import { CardsTabClient } from "@/components/finance/CardsTabClient";
@@ -23,6 +24,7 @@ import {
   SubscriptionItem,
   ExtratoTransaction,
   ExtratoCategory,
+  Person,
 } from "@/types/finance";
 import { TrendingUp } from "lucide-react";
 
@@ -30,6 +32,7 @@ export interface DashboardClientProps {
   initialData: DashboardData;
   allTransactions?: ExtratoTransaction[];
   allCategories?: ExtratoCategory[];
+  initialPeople?: Person[];
   embedded?: boolean;
   isPrivacyHidden?: boolean;
   onTogglePrivacy?: () => void;
@@ -43,6 +46,7 @@ export function DashboardClient({
   initialData,
   allTransactions,
   allCategories,
+  initialPeople = [],
   embedded = false,
   isPrivacyHidden: externalPrivacy,
   onTogglePrivacy: externalTogglePrivacy,
@@ -61,6 +65,9 @@ export function DashboardClient({
   const [isSubscriptionsDetailsOpen, setIsSubscriptionsDetailsOpen] = useState(false);
   const [isMonthlySpendingDetailsOpen, setIsMonthlySpendingDetailsOpen] = useState(false);
   const [isSpendingDetailsOpen, setIsSpendingDetailsOpen] = useState(false);
+  const [isPeopleDetailsOpen, setIsPeopleDetailsOpen] = useState(false);
+  const [extraPeople, setExtraPeople] = useState<Person[]>([]);
+  const [settledSplitKeys, setSettledSplitKeys] = useState<Set<string>>(() => new Set());
   const [cardLimitsModalTab, setCardLimitsModalTab] = useState<CardLimitsTab | null>(null);
   const [subscriptionsState, setSubscriptionsState] = useState<SubscriptionSummary>(
     initialData.subscriptions
@@ -69,6 +76,26 @@ export function DashboardClient({
 
   const greetingRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const peopleList: Person[] = [
+    ...initialPeople,
+    ...extraPeople.filter((extra) => !initialPeople.some((p) => p.id === extra.id)),
+  ];
+
+  const transactionsWithSettledSplits: ExtratoTransaction[] = (allTransactions || []).map((tx) => {
+    if (!tx.splits || tx.splits.length === 0 || settledSplitKeys.size === 0) {
+      return tx;
+    }
+    return {
+      ...tx,
+      splits: tx.splits.map((sp) => {
+        const isLocallySettled =
+          settledSplitKeys.has(`${sp.personId}:ALL`) ||
+          settledSplitKeys.has(`${sp.personId}:${tx.id}`);
+        return isLocallySettled ? { ...sp, isPaid: true } : sp;
+      }),
+    };
+  });
 
   const userName = initialData.userName || "João";
 
@@ -155,6 +182,10 @@ export function DashboardClient({
     }
     if (widgetName === "parcelamentos") {
       setCardLimitsModalTab("parcelas");
+      return;
+    }
+    if (widgetName === "pessoas") {
+      setIsPeopleDetailsOpen(true);
       return;
     }
     console.log("Widget clicado:", widgetName);
@@ -315,6 +346,8 @@ export function DashboardClient({
               creditCards={cards}
               subscriptions={subscriptionsState}
               categories={initialData.monthOverview.categories}
+              people={peopleList}
+              allTransactions={transactionsWithSettledSplits}
               totalMonthSpent={initialData.monthOverview.totalSpent}
               topCategoryName={initialData.monthOverview.topCategoryName}
               cashFlow={initialData.cashFlow}
@@ -473,6 +506,28 @@ export function DashboardClient({
           onTogglePrivacy={handleTogglePrivacy}
         />
       )}
+
+      {/* Tela de Detalhes de Pessoas & Rateios */}
+      <PeopleDetailsScreen
+        isOpen={isPeopleDetailsOpen}
+        onClose={() => setIsPeopleDetailsOpen(false)}
+        people={peopleList}
+        allTransactions={transactionsWithSettledSplits}
+        isPrivacyHidden={isPrivacyHidden}
+        onTogglePrivacy={handleTogglePrivacy}
+        onPersonAdded={(newPerson) => {
+          setExtraPeople((prev) => [...prev, newPerson]);
+          router.refresh();
+        }}
+        onSplitsSettled={(personId, transactionId) => {
+          setSettledSplitKeys((prev) => {
+            const next = new Set(prev);
+            next.add(transactionId ? `${personId}:${transactionId}` : `${personId}:ALL`);
+            return next;
+          });
+          router.refresh();
+        }}
+      />
     </>
   );
 

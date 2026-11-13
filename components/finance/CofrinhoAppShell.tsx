@@ -156,6 +156,7 @@ export function CofrinhoAppShell({
             initialData={initialDashboardData}
             allTransactions={initialExtratoData.transactions}
             allCategories={initialExtratoData.categories || []}
+            initialPeople={initialExtratoData.people || []}
             isPrivacyHidden={isPrivacyHidden}
             onTogglePrivacy={() => setIsPrivacyHidden((prev) => !prev)}
             onNavigateToExtrato={() => handleSwitchTab("extrato")}

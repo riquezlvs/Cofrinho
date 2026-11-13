@@ -690,6 +690,7 @@ export async function getExtratoData(): Promise<ExtratoData> {
       pixKey: person?.pix_key,
       phone: person?.phone,
       isPaid: Boolean(s.is_paid),
+      direction: s.direction === "payable" ? "payable" : "receivable",
     });
   }
 
@@ -1701,6 +1702,45 @@ export async function createAccount(payload: {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro desconhecido";
     console.error("Erro interno ao criar conta:", err);
+    return { success: false, error: message };
+  }
+}
+
+export async function settlePersonSplits(
+  personId: string,
+  transactionId?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+    const { data: usersData } = await supabase.auth.admin.listUsers();
+    const userId = usersData?.users?.[0]?.id;
+
+    if (!userId) {
+      return { success: false, error: "Nenhum usuário encontrado." };
+    }
+
+    let query = supabase
+      .from("splits")
+      .update({ is_paid: true, paid_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .eq("person_id", personId)
+      .eq("is_paid", false);
+
+    if (transactionId) {
+      query = query.eq("transaction_id", transactionId);
+    }
+
+    const { error } = await query;
+
+    if (error) {
+      console.error("Erro ao quitar rateio:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    console.error("Erro interno ao quitar rateio:", err);
     return { success: false, error: message };
   }
 }
