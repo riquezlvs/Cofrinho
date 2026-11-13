@@ -217,28 +217,83 @@ function computeBubblePlacements(items: CategoryItemData[]): BubblePlacement[] {
     return [{ item: topItems[0], diameter: 136, left: 0, top: 0 }];
   }
 
-  // Escala diâmetros entre 64px e 126px
+  // Escala diâmetros iniciais entre 58px e 116px
   const maxPct = Math.max(...topItems.map((i) => i.percentage), 1);
-  const diameters = topItems.map((item) => {
+  const radii = topItems.map((item) => {
     const ratio = item.percentage / maxPct;
-    return Math.round(64 + ratio * 62);
+    return (58 + ratio * 58) / 2;
   });
 
-  // Posições relativas ao centro (x, y) para evitar sobreposição
-  const presets: [number, number][] = [
-    [-38, -14],
-    [54, -22],
-    [46, 52],
-    [-54, 54],
-    [-8, -76],
-    [92, 16],
-  ];
+  const gap = 8;
+  const placed: { x: number; y: number; r: number }[] = [{ x: 0, y: 0, r: radii[0] }];
+
+  for (let i = 1; i < topItems.length; i++) {
+    const r = radii[i];
+    let bestPos = { x: 0, y: 0 };
+    let bestDistSq = Infinity;
+
+    // Testa posições tangentes ao redor de cada círculo já posicionado
+    for (let j = 0; j < placed.length; j++) {
+      const anchor = placed[j];
+      const dist = anchor.r + r + gap;
+
+      for (let step = 0; step < 36; step++) {
+        const angle = (step * Math.PI * 2) / 36 - Math.PI / 6;
+        const cx = anchor.x + Math.cos(angle) * dist;
+        const cy = anchor.y + Math.sin(angle) * dist;
+
+        let overlaps = false;
+        for (let k = 0; k < placed.length; k++) {
+          const other = placed[k];
+          const dx = cx - other.x;
+          const dy = cy - other.y;
+          const minDist = r + other.r + gap - 0.5;
+          if (dx * dx + dy * dy < minDist * minDist) {
+            overlaps = true;
+            break;
+          }
+        }
+
+        if (!overlaps) {
+          // Prefere posições mais próximas do centro e levemente mais horizontais
+          const score = cx * cx * 0.75 + cy * cy * 1.25;
+          if (score < bestDistSq) {
+            bestDistSq = score;
+            bestPos = { x: cx, y: cy };
+          }
+        }
+      }
+    }
+
+    placed.push({ x: bestPos.x, y: bestPos.y, r });
+  }
+
+  // Centraliza o conjunto e garante que caiba dentro de 320x220px sem cortar
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const p of placed) {
+    minX = Math.min(minX, p.x - p.r);
+    maxX = Math.max(maxX, p.x + p.r);
+    minY = Math.min(minY, p.y - p.r);
+    maxY = Math.max(maxY, p.y + p.r);
+  }
+
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+
+  const maxW = 320;
+  const maxH = 220;
+  const scale = Math.min(1, maxW / Math.max(width, 1), maxH / Math.max(height, 1));
 
   return topItems.map((item, idx) => ({
     item,
-    diameter: diameters[idx],
-    left: presets[idx]?.[0] ?? 0,
-    top: presets[idx]?.[1] ?? 0,
+    diameter: Math.round(placed[idx].r * 2 * scale),
+    left: Math.round((placed[idx].x - centerX) * scale),
+    top: Math.round((placed[idx].y - centerY) * scale),
   }));
 }
 
@@ -577,7 +632,7 @@ export function SpendingDetailsScreen({
                 </div>
 
                 {/* Gráfico de Bolhas Proporcionais */}
-                <div className="relative w-full h-[220px] flex items-center justify-center">
+                <div className="relative w-full h-[240px] shrink-0 overflow-hidden flex items-center justify-center">
                   {bubbles.length > 0 ? (
                     bubbles.map((b) => {
                       const isSelected = selectedCategoryId === b.item.id;

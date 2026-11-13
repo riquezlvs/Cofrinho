@@ -9,6 +9,7 @@ interface BentoDashboardGridProps {
   creditCard: CreditCardSummary;
   subscriptions: SubscriptionSummary;
   categories: CategorySpend[];
+  totalMonthSpent?: number;
   topCategoryName?: string;
   cashFlow?: {
     income: number;
@@ -122,6 +123,7 @@ export function BentoDashboardGrid({
   creditCard,
   subscriptions,
   categories,
+  totalMonthSpent,
   topCategoryName = "Alimentação",
   cashFlow = {
     income: 1250.0,
@@ -374,6 +376,78 @@ export function BentoDashboardGrid({
             </span>
           </div>
         </div>
+
+        {/* Widget 7: Gastos por Categoria (Gastos • este mês com barra segmentada) */}
+        {(() => {
+          const activeCats = categories.filter((c) => c.amount > 0);
+          const totalCatAmt = activeCats.reduce((sum, c) => sum + c.amount, 0);
+          const displaySpent = totalMonthSpent !== undefined ? totalMonthSpent : totalCatAmt;
+          const fallbackColors = ["#ff6b00", "#ccff00", "#38bdf8", "#a855f7", "#ec4899"];
+
+          return (
+            <div
+              onClick={() => onWidgetClick?.("gastos-categorias")}
+              className="rounded-[28px] liquid-glass-card p-4 sm:p-5 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300 active:scale-[0.98] select-none"
+            >
+              <div className="flex items-center justify-end">
+                <svg
+                  className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+
+              <div className="py-2">
+                {activeCats.length > 0 && totalCatAmt > 0 ? (
+                  <div className="w-full h-4 sm:h-5 flex items-center gap-1">
+                    {activeCats.map((cat, idx) => {
+                      const pct = (cat.amount / totalCatAmt) * 100;
+                      const barColor =
+                        cat.color || fallbackColors[idx % fallbackColors.length];
+                      return (
+                        <div
+                          key={`${cat.name}-${idx}`}
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${Math.max(6, pct)}%`,
+                            backgroundColor: barColor,
+                          }}
+                          title={`${cat.name}: R$ ${formatCurrency(cat.amount)}`}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="w-full h-4 sm:h-5 rounded-full bg-white/[0.08]" />
+                )}
+              </div>
+
+              <div className="flex flex-col gap-0.5 pt-1">
+                <span className="text-[11px] sm:text-xs font-medium text-zinc-400">
+                  Gastos • este mês
+                </span>
+                <span
+                  className={`text-xl sm:text-[22px] font-extrabold text-white tracking-tight leading-tight ${
+                    isPrivacyHidden ? "balance-blur" : ""
+                  }`}
+                >
+                  R$ {formatCurrency(displaySpent)}
+                </span>
+                <span className="text-[11px] font-medium text-zinc-400 mt-0.5">
+                  {activeCats.length === 0
+                    ? "Nenhuma categoria"
+                    : activeCats.length === 1
+                    ? "1 categoria"
+                    : `${activeCats.length} categorias`}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Botão + Adicionar widgets exatamente como na referência */}
