@@ -6,15 +6,24 @@ import { TopHeader, SegmentedFilterPills, SegmentType } from "@/components/finan
 import { BankCardsCarousel } from "@/components/finance/BankCardsCarousel";
 import { AccountsOverviewCard } from "@/components/finance/AccountsOverviewCard";
 import { AccountsDetailsScreen } from "@/components/finance/AccountsDetailsScreen";
+import { SubscriptionsDetailsScreen } from "@/components/finance/SubscriptionsDetailsScreen";
 import { MonthlySpendingCard } from "@/components/finance/MonthlySpendingCard";
 import { BentoDashboardGrid } from "@/components/finance/BentoDashboardGrid";
 import { FloatingCofrinhoDock } from "@/components/finance/FloatingCofrinhoDock";
 import { CardsTabClient } from "@/components/finance/CardsTabClient";
-import { DashboardData, CreditCardSummary, AccountSummary } from "@/types/finance";
+import {
+  DashboardData,
+  CreditCardSummary,
+  AccountSummary,
+  SubscriptionSummary,
+  SubscriptionItem,
+  ExtratoTransaction,
+} from "@/types/finance";
 import { TrendingUp } from "lucide-react";
 
 export interface DashboardClientProps {
   initialData: DashboardData;
+  allTransactions?: ExtratoTransaction[];
   embedded?: boolean;
   isPrivacyHidden?: boolean;
   onTogglePrivacy?: () => void;
@@ -26,6 +35,7 @@ export interface DashboardClientProps {
 
 export function DashboardClient({
   initialData,
+  allTransactions,
   embedded = false,
   isPrivacyHidden: externalPrivacy,
   onTogglePrivacy: externalTogglePrivacy,
@@ -41,6 +51,10 @@ export function DashboardClient({
   const [cards, setCards] = useState<CreditCardSummary[]>(initialData.creditCards || []);
   const [extraAccounts, setExtraAccounts] = useState<AccountSummary[]>([]);
   const [isAccountsDetailsOpen, setIsAccountsDetailsOpen] = useState(false);
+  const [isSubscriptionsDetailsOpen, setIsSubscriptionsDetailsOpen] = useState(false);
+  const [subscriptionsState, setSubscriptionsState] = useState<SubscriptionSummary>(
+    initialData.subscriptions
+  );
   const [isGreetingScrolledOut, setIsGreetingScrolledOut] = useState(false);
 
   const greetingRef = useRef<HTMLDivElement>(null);
@@ -111,6 +125,10 @@ export function DashboardClient({
     }
     if (widgetName === "transacoes" || widgetName === "fatura" || widgetName === "extrato") {
       handleNavigateExtrato();
+      return;
+    }
+    if (widgetName === "assinaturas") {
+      setIsSubscriptionsDetailsOpen(true);
       return;
     }
     console.log("Widget clicado:", widgetName);
@@ -267,7 +285,7 @@ export function DashboardClient({
             <BentoDashboardGrid
               isPrivacyHidden={isPrivacyHidden}
               creditCard={activeDefaultCard}
-              subscriptions={initialData.subscriptions}
+              subscriptions={subscriptionsState}
               categories={initialData.monthOverview.categories}
               topCategoryName={initialData.monthOverview.topCategoryName}
               cashFlow={initialData.cashFlow}
@@ -299,6 +317,48 @@ export function DashboardClient({
         onViewAllTransactions={handleNavigateExtrato}
         onAccountAdded={(newAcc) => {
           setExtraAccounts((prev) => [...prev, newAcc]);
+          router.refresh();
+        }}
+      />
+
+      {/* Tela de Detalhes de Assinaturas */}
+      <SubscriptionsDetailsScreen
+        isOpen={isSubscriptionsDetailsOpen}
+        onClose={() => setIsSubscriptionsDetailsOpen(false)}
+        subscriptions={subscriptionsState}
+        allTransactions={allTransactions}
+        recentTransactions={initialData.recentTransactions || []}
+        isPrivacyHidden={isPrivacyHidden}
+        onTogglePrivacy={handleTogglePrivacy}
+        onSubscriptionAdded={(newItem: SubscriptionItem) => {
+          setSubscriptionsState((prev) => {
+            const nextItems = [...(prev.items || []), newItem].sort(
+              (a, b) => a.daysUntilNext - b.daysUntilNext
+            );
+            const monthlyAmount = Number(
+              nextItems.reduce((sum, item) => sum + item.amount, 0).toFixed(2)
+            );
+            const thisMonthAmount = Number(
+              (
+                (prev.thisMonthAmount ?? prev.monthlyAmount) +
+                (newItem.status === "paid" ? newItem.amount : 0)
+              ).toFixed(2)
+            );
+            return {
+              monthlyAmount,
+              thisMonthAmount,
+              activeCount: nextItems.length,
+              nextBillingDays:
+                nextItems.length > 0 ? nextItems[0].daysUntilNext : null,
+              services: nextItems.slice(0, 4).map((item) => ({
+                name: item.name,
+                domain: item.domain,
+                initial: item.initial,
+                bgColor: item.bgColor,
+              })),
+              items: nextItems,
+            };
+          });
           router.refresh();
         }}
       />

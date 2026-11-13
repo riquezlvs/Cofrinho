@@ -36,15 +36,35 @@ export interface CreditCardSummary {
   isDefault?: boolean;
 }
 
+export interface SubscriptionItem {
+  id: string;
+  name: string;
+  amount: number;
+  billingDay: number;
+  nextBillingDate: string;
+  daysUntilNext: number;
+  lastPaidDate?: string;
+  status: "paid" | "pending";
+  paymentMethod?: string;
+  accountOrCardName?: string;
+  categoryIcon?: string;
+  domain?: string;
+  initial: string;
+  bgColor: string;
+}
+
 export interface SubscriptionSummary {
   monthlyAmount: number;
+  thisMonthAmount?: number;
   activeCount: number;
+  nextBillingDays?: number | null;
   services: {
     name?: string;
     domain?: string;
     initial: string;
     bgColor: string;
   }[];
+  items?: SubscriptionItem[];
 }
 
 export interface AccountSummary {

@@ -30,8 +30,10 @@ interface BentoDashboardGridProps {
 
 function SubscriptionLogo({
   service,
+  sizeClass = "w-9 h-9 text-sm",
 }: {
   service: { name?: string; domain?: string; initial: string; bgColor: string };
+  sizeClass?: string;
 }) {
   const [imgError, setImgError] = useState(false);
 
@@ -41,11 +43,6 @@ function SubscriptionLogo({
       const b = detectBrand(service.name);
       if (b) return b.domain;
     }
-    const init = (service.initial || "").toUpperCase();
-    if (init === "N") return "netflix.com";
-    if (init === "S") return "spotify.com";
-    if (init === "G") return "google.com";
-    if (init === "A") return "primevideo.com";
     return null;
   };
 
@@ -55,7 +52,7 @@ function SubscriptionLogo({
     const faviconUrl = getGoogleFaviconUrl(domain, 64);
     return (
       <div
-        className="w-5 h-5 rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center overflow-hidden shrink-0 shadow-sm"
+        className={`${sizeClass} rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center overflow-hidden shrink-0 shadow-sm ring-2 ring-[#14141a]`}
         title={service.name || domain}
       >
         <img
@@ -71,8 +68,9 @@ function SubscriptionLogo({
 
   return (
     <div
-      style={{ backgroundColor: service.bgColor }}
-      className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shadow-sm ring-1 ring-black/40 shrink-0"
+      style={{ backgroundColor: service.bgColor || "#27272a" }}
+      className={`${sizeClass} rounded-full flex items-center justify-center font-bold text-zinc-200 shadow-sm ring-2 ring-[#14141a] border border-white/10 shrink-0`}
+      title={service.name}
     >
       {service.initial}
     </div>
@@ -325,37 +323,55 @@ export function BentoDashboardGrid({
           </div>
         </div>
 
-        {/* Widget 6: Assinaturas com Ícones Originais dos Serviços (Bottom Right) */}
+        {/* Widget 6: Assinaturas (Template Anexo 1 com dados reais) */}
         <div
           onClick={() => onWidgetClick?.("assinaturas")}
-          className="rounded-[28px] liquid-glass-card p-4 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300"
+          className="rounded-[28px] liquid-glass-card p-4 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300 active:scale-[0.98] select-none"
         >
-          <div className="flex items-start justify-between pb-2 border-b border-white/[0.08]">
-            <div className="w-8 h-8 rounded-full bg-white/[0.08] border border-white/15 flex items-center justify-center text-zinc-300 group-hover:text-indigo-400 group-hover:bg-indigo-500/10 transition-colors shadow-inner">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" strokeLinecap="round" strokeLinejoin="round" />
-                <polyline points="12 6 12 12 16 14" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <svg className="w-3.5 h-3.5 text-zinc-500 group-hover:text-white transition-colors" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <div className="flex items-start justify-between">
+            {subscriptions.services.length > 0 ? (
+              <div className="flex items-center -space-x-2.5">
+                {subscriptions.services.slice(0, 3).map((s, idx) => (
+                  <SubscriptionLogo
+                    key={`${s.name || s.initial}-${idx}`}
+                    service={s}
+                    sizeClass={
+                      subscriptions.services.length === 1
+                        ? "w-10 h-10 text-sm"
+                        : "w-9 h-9 text-xs"
+                    }
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-white/[0.08] border border-white/15 flex items-center justify-center text-zinc-300 group-hover:text-white transition-colors shadow-inner">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M12 6v6l4 2" strokeLinecap="round" strokeLinejoin="round" />
+                  <circle cx="12" cy="12" r="9" />
+                </svg>
+              </div>
+            )}
+            <svg className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors mt-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
 
           <div className="flex flex-col gap-0.5 pt-2">
-            <span className="text-[11px] font-medium text-zinc-400">Assinaturas</span>
-            <span className={`text-base font-bold text-white tracking-tight ${isPrivacyHidden ? "balance-blur" : ""}`}>
+            <span className="text-xs font-medium text-zinc-400">Assinaturas</span>
+            <span className={`text-xl sm:text-[22px] font-extrabold text-white tracking-tight leading-tight ${isPrivacyHidden ? "balance-blur" : ""}`}>
               R$ {formatCurrency(subscriptions.monthlyAmount)}
             </span>
-            {/* Badges de Serviços Ativos com Ícones Oficiais */}
-            <div className="flex items-center gap-1.5 pt-1">
-              {subscriptions.services.slice(0, 4).map((s, idx) => (
-                <SubscriptionLogo key={idx} service={s} />
-              ))}
-              <span className="text-[10px] text-zinc-400 ml-0.5">
-                {subscriptions.activeCount} ativas
-              </span>
-            </div>
+            <span className="text-[11px] font-medium text-zinc-400 mt-0.5">
+              {subscriptions.activeCount === 0
+                ? "Nenhuma assinatura"
+                : subscriptions.nextBillingDays === 0
+                ? "Próxima hoje"
+                : subscriptions.nextBillingDays === 1
+                ? "Próxima em 1 dia"
+                : subscriptions.nextBillingDays !== null && subscriptions.nextBillingDays !== undefined
+                ? `Próxima em ${subscriptions.nextBillingDays} dias`
+                : `${subscriptions.activeCount} ${subscriptions.activeCount === 1 ? "ativa" : "ativas"}`}
+            </span>
           </div>
         </div>
       </div>

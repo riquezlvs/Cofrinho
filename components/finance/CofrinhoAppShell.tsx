@@ -154,6 +154,7 @@ export function CofrinhoAppShell({
           <DashboardClient
             embedded
             initialData={initialDashboardData}
+            allTransactions={initialExtratoData.transactions}
             isPrivacyHidden={isPrivacyHidden}
             onTogglePrivacy={() => setIsPrivacyHidden((prev) => !prev)}
             onNavigateToExtrato={() => handleSwitchTab("extrato")}

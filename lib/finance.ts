@@ -10,6 +10,7 @@ import {
   InstallmentScheduleItem,
   InstallmentSummary,
   Person,
+  SubscriptionItem,
   SubscriptionSummary,
   Transaction,
   TransactionSplit,
@@ -287,46 +288,127 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   const topCategoryName = activeCats[0]?.name || "Alimentação";
 
-  // 7. Assinaturas Recorrentes Fixas (SaaS / Streaming)
-  const subscriptionTxs = rawTransactions.filter(
-    (t) => t.is_fixed && t.type === "expense" && t.amount < 500
-  );
-  const monthlySubscriptionSum = subscriptionTxs.reduce(
-    (sum, t) => sum + Number(t.amount || 0),
-    0
+  // 7. Assinaturas Recorrentes Fixas (SaaS / Streaming / Contratos < R$ 500)
+  const rawSubscriptionTxs = rawTransactions.filter(
+    (t) => t.is_fixed && t.type === "expense" && !t.is_hidden && Number(t.amount || 0) < 500
   );
 
-  const serviceBadges = subscriptionTxs.slice(0, 4).map((s) => {
-    const desc = (s.description || "").toLowerCase();
-    if (desc.includes("netflix"))
-      return { name: "Netflix", domain: "netflix.com", initial: "N", bgColor: "#e50914" };
-    if (desc.includes("spotify"))
-      return { name: "Spotify", domain: "spotify.com", initial: "S", bgColor: "#1db954" };
-    if (desc.includes("google"))
-      return { name: "Google One", domain: "google.com", initial: "G", bgColor: "#4285f4" };
-    if (desc.includes("prime") || desc.includes("amazon"))
-      return { name: "Prime Video", domain: "primevideo.com", initial: "A", bgColor: "#00a8e1" };
-    const detected = detectBrand(s.description || "");
-    return {
-      name: detected?.name || s.description || "Assinatura",
+  const accountMapForSubs = new Map(rawAccounts.map((a) => [a.id, a.name]));
+  const cardMapForSubs = new Map(rawCards.map((c) => [c.id, c.name]));
+
+  // Agrupa por descrição normalizada para evitar duplicar a mesma assinatura em meses distintos
+  const groupedSubs = new Map<string, typeof rawSubscriptionTxs>();
+  for (const tx of rawSubscriptionTxs) {
+    const key = (tx.description || "Assinatura").trim().toLowerCase();
+    const list = groupedSubs.get(key) || [];
+    list.push(tx);
+    groupedSubs.set(key, list);
+  }
+
+  const todayMidnightMs = Date.UTC(currentYear, currentMonthIndex, currentDay);
+  const clampDay = (year: number, monthIdx: number, day: number) => {
+    const maxDay = new Date(year, monthIdx + 1, 0).getDate();
+    return Math.min(Math.max(1, day), maxDay);
+  };
+  const formatYMD = (year: number, monthIdx: number, day: number) =>
+    `${year}-${String(monthIdx + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+  const subscriptionItems: SubscriptionItem[] = [];
+  let thisMonthSubscriptionsTotal = 0;
+
+  for (const [, group] of groupedSubs) {
+    // rawTransactions já vem ordenado por transaction_date DESC
+    const latestTx = group[0];
+    const txDateStr = (latestTx.transaction_date || "").split("T")[0];
+    const parts = txDateStr.split("-");
+    const parsedDay = parts.length === 3 ? parseInt(parts[2], 10) : currentDay;
+    const billingDay = Number.isFinite(parsedDay) ? parsedDay : currentDay;
+
+    const currentMonthTx = group.find((t) => {
+      const comp = (t.competence_date || t.transaction_date || "").split("T")[0];
+      return comp.startsWith(currentCompetencePrefix);
+    });
+
+    const isPaidThisMonth = Boolean(
+      currentMonthTx && currentMonthTx.status === "paid"
+    );
+
+    if (currentMonthTx) {
+      thisMonthSubscriptionsTotal += Number(currentMonthTx.amount || 0);
+    }
+
+    let nextYear = currentYear;
+    let nextMonthIdx = currentMonthIndex;
+    if (isPaidThisMonth || billingDay < currentDay) {
+      nextMonthIdx = currentMonthIndex + 1;
+      if (nextMonthIdx > 11) {
+        nextMonthIdx = 0;
+        nextYear += 1;
+      }
+    }
+
+    const clampedNextDay = clampDay(nextYear, nextMonthIdx, billingDay);
+    const nextBillingDate = formatYMD(nextYear, nextMonthIdx, clampedNextDay);
+    const nextMidnightMs = Date.UTC(nextYear, nextMonthIdx, clampedNextDay);
+    const daysUntilNext = Math.max(
+      0,
+      Math.round((nextMidnightMs - todayMidnightMs) / (1000 * 60 * 60 * 24))
+    );
+
+    const detected = detectBrand(latestTx.description || "");
+    const cleanName = (latestTx.description || "Assinatura").trim();
+    const initial = cleanName ? cleanName[0].toUpperCase() : "A";
+    const bgColor = detected?.color || "#27272a";
+
+    const accountOrCardName = latestTx.credit_card_id
+      ? cardMapForSubs.get(latestTx.credit_card_id)
+      : latestTx.account_id
+      ? accountMapForSubs.get(latestTx.account_id)
+      : undefined;
+
+    subscriptionItems.push({
+      id: latestTx.id,
+      name: cleanName,
+      amount: Number(latestTx.amount || 0),
+      billingDay,
+      nextBillingDate,
+      daysUntilNext,
+      lastPaidDate: currentMonthTx
+        ? (currentMonthTx.transaction_date || "").split("T")[0]
+        : txDateStr || undefined,
+      status: isPaidThisMonth ? "paid" : "pending",
+      paymentMethod: latestTx.payment_method,
+      accountOrCardName,
+      categoryIcon: latestTx.category?.icon,
       domain: detected?.domain,
-      initial: s.description ? s.description[0].toUpperCase() : "★",
-      bgColor: detected?.color || "#8b5cf6",
-    };
-  });
+      initial,
+      bgColor,
+    });
+  }
+
+  // Ordena por próxima cobrança mais próxima
+  subscriptionItems.sort((a, b) => a.daysUntilNext - b.daysUntilNext);
+
+  const monthlySubscriptionSum = Number(
+    subscriptionItems.reduce((sum, item) => sum + item.amount, 0).toFixed(2)
+  );
+  const nextBillingDays =
+    subscriptionItems.length > 0 ? subscriptionItems[0].daysUntilNext : null;
+
+  const serviceBadges = subscriptionItems.slice(0, 4).map((item) => ({
+    name: item.name,
+    domain: item.domain,
+    initial: item.initial,
+    bgColor: item.bgColor,
+  }));
 
   const subscriptionsSummary: SubscriptionSummary = {
-    monthlyAmount: monthlySubscriptionSum || 149.8,
-    activeCount: subscriptionTxs.length || 4,
-    services:
-      serviceBadges.length > 0
-        ? serviceBadges
-        : [
-            { name: "Netflix", domain: "netflix.com", initial: "N", bgColor: "#e50914" },
-            { name: "Spotify", domain: "spotify.com", initial: "S", bgColor: "#1db954" },
-            { name: "Google One", domain: "google.com", initial: "G", bgColor: "#4285f4" },
-            { name: "Prime Video", domain: "primevideo.com", initial: "A", bgColor: "#00a8e1" },
-          ],
+    monthlyAmount: monthlySubscriptionSum,
+    thisMonthAmount: Number(thisMonthSubscriptionsTotal.toFixed(2)),
+    activeCount: subscriptionItems.length,
+    nextBillingDays,
+    services: serviceBadges,
+    items: subscriptionItems,
   };
 
   // 8. Fluxo de Caixa (Cash Flow)
