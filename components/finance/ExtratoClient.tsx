@@ -705,6 +705,24 @@ export function ExtratoClient({
   const [editTxIsRegisteringPerson, setEditTxIsRegisteringPerson] = useState<boolean>(false);
   const [editTxNewPersonName, setEditTxNewPersonName] = useState("");
   const [editTxNewPersonPix, setEditTxNewPersonPix] = useState("");
+  const [isSavingEditTx, setIsSavingEditTx] = useState(false);
+  const [editTxError, setEditTxError] = useState<string | null>(null);
+  const [txFeedbackToast, setTxFeedbackToast] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!txFeedbackToast) return;
+    const timer = setTimeout(() => {
+      setTxFeedbackToast(null);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [txFeedbackToast]);
+
+  const showTxToast = useCallback((type: "success" | "error", message: string) => {
+    setTxFeedbackToast({ type, message });
+  }, []);
 
   const handleOpenTransactionDetail = (tx: ExtratoTransaction) => {
     setSelectedTx(tx);
@@ -3397,6 +3415,8 @@ export function ExtratoClient({
           setEditTxIsRegisteringPerson(false);
           setEditTxNewPersonName("");
           setEditTxNewPersonPix("");
+          setEditTxError(null);
+          setIsSavingEditTx(false);
           setIsEditTxModalOpen(true);
         };
 
@@ -3982,62 +4002,83 @@ export function ExtratoClient({
                   splits: newSplits,
                 };
 
-                setSelectedTx(updatedTx);
-                setTransactions((prev) =>
-                  prev.map((t) => {
-                    if (
-                      editTxApplyToAll &&
-                      selectedTx.installmentGroupId &&
-                      t.installmentGroupId === selectedTx.installmentGroupId
-                    ) {
-                      return {
-                        ...t,
-                        title: newTitle,
-                        amount: newAmount,
-                        originalTotalAmount: newTotalAmount,
-                        installmentTotal: editTxInstallmentTotal,
-                        paymentMethod: editTxPaymentMethod,
-                        accountId: newAccountId || undefined,
-                        creditCardId: newCreditCardId || undefined,
-                        accountOrCard: newAccountOrCard,
-                        accountName: newAccountOrCard,
-                        accountType: newAccountType,
-                        isHidden: editTxIsHidden,
-                        categoryName: editTxCategoryName,
-                        categoryIcon: editTxCategoryIcon,
-                        categoryColor: editTxCategoryColor,
-                        splits: newSplits,
-                      };
-                    }
-                    return t.id === selectedTx.id ? updatedTx : t;
-                  })
-                );
-                setIsEditTxModalOpen(false);
+                setIsSavingEditTx(true);
+                setEditTxError(null);
 
-                await updateTransactionAction(selectedTx.id, {
-                  description: newTitle,
-                  amount: newAmount,
-                  transactionDate: newDate,
-                  paymentMethod: editTxPaymentMethod,
-                  accountId: newAccountId,
-                  creditCardId: newCreditCardId,
-                  isFixed: editTxIsFixed,
-                  isHidden: editTxIsHidden,
-                  installmentTotal: editTxInstallmentTotal,
-                  originalTotalAmount: newTotalAmount,
-                  applyToAllInstallments: editTxApplyToAll,
-                  splits: newSplits?.map((s) => ({
-                    personId: s.personId,
-                    amountOwed: s.amountOwed,
-                    percentage: s.percentage || 0,
-                    isPaid: s.isPaid,
-                  })),
-                  categoryId: editTxCategoryId
-                    ? editTxCategoryId.startsWith("sub-") || editTxCategoryId.startsWith("cat-")
-                      ? undefined
-                      : editTxCategoryId
-                    : undefined,
-                });
+                try {
+                  const res = await updateTransactionAction(selectedTx.id, {
+                    description: newTitle,
+                    amount: newAmount,
+                    transactionDate: newDate,
+                    paymentMethod: editTxPaymentMethod,
+                    accountId: newAccountId,
+                    creditCardId: newCreditCardId,
+                    isFixed: editTxIsFixed,
+                    isHidden: editTxIsHidden,
+                    installmentTotal: editTxInstallmentTotal,
+                    originalTotalAmount: newTotalAmount,
+                    applyToAllInstallments: editTxApplyToAll,
+                    splits: newSplits?.map((s) => ({
+                      personId: s.personId,
+                      amountOwed: s.amountOwed,
+                      percentage: s.percentage || 0,
+                      isPaid: s.isPaid,
+                    })),
+                    categoryId: editTxCategoryId
+                      ? editTxCategoryId.startsWith("sub-") || editTxCategoryId.startsWith("cat-")
+                        ? undefined
+                        : editTxCategoryId
+                      : undefined,
+                  });
+
+                  if (!res?.success) {
+                    const errMsg = res?.error || "Não foi possível salvar as alterações.";
+                    setEditTxError(errMsg);
+                    showTxToast("error", errMsg);
+                    return;
+                  }
+
+                  setSelectedTx(updatedTx);
+                  setTransactions((prev) =>
+                    prev.map((t) => {
+                      if (
+                        editTxApplyToAll &&
+                        selectedTx.installmentGroupId &&
+                        t.installmentGroupId === selectedTx.installmentGroupId
+                      ) {
+                        return {
+                          ...t,
+                          title: newTitle,
+                          amount: newAmount,
+                          originalTotalAmount: newTotalAmount,
+                          installmentTotal: editTxInstallmentTotal,
+                          paymentMethod: editTxPaymentMethod,
+                          accountId: newAccountId || undefined,
+                          creditCardId: newCreditCardId || undefined,
+                          accountOrCard: newAccountOrCard,
+                          accountName: newAccountOrCard,
+                          accountType: newAccountType,
+                          isHidden: editTxIsHidden,
+                          categoryName: editTxCategoryName,
+                          categoryIcon: editTxCategoryIcon,
+                          categoryColor: editTxCategoryColor,
+                          splits: newSplits,
+                        };
+                      }
+                      return t.id === selectedTx.id ? updatedTx : t;
+                    })
+                  );
+                  setIsEditTxModalOpen(false);
+                  showTxToast("success", "Alterações salvas com sucesso!");
+                  router.refresh();
+                } catch (err) {
+                  const errMsg =
+                    err instanceof Error ? err.message : "Erro inesperado ao salvar alterações.";
+                  setEditTxError(errMsg);
+                  showTxToast("error", errMsg);
+                } finally {
+                  setIsSavingEditTx(false);
+                }
               };
 
               return (
@@ -4788,15 +4829,22 @@ export function ExtratoClient({
                       </div>
                     </div>
 
-                    {/* Rodapé Fixo - Exibido apenas se algo for alterado */}
-                    {hasChanges && (
-                      <div className="shrink-0 bg-black/95 backdrop-blur-md border-t border-white/[0.08] px-5 py-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] z-30 animate-in slide-in-from-bottom duration-200 shadow-2xl">
+                    {/* Rodapé Fixo - Exibido apenas se algo for alterado ou houver erro */}
+                    {(hasChanges || editTxError) && (
+                      <div className="shrink-0 bg-black/95 backdrop-blur-md border-t border-white/[0.08] px-5 py-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] z-30 animate-in slide-in-from-bottom duration-200 shadow-2xl flex flex-col gap-2.5">
+                        {editTxError && (
+                          <div className="px-3.5 py-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                            <span>{editTxError}</span>
+                          </div>
+                        )}
                         <button
                           type="button"
+                          disabled={isSavingEditTx}
                           onClick={handleSaveEdit}
-                          className="w-full py-3.5 sm:py-4 rounded-full bg-white text-black font-bold text-sm sm:text-base hover:bg-zinc-100 active:scale-95 transition-all shadow-xl flex items-center justify-center cursor-pointer"
+                          className="w-full py-3.5 sm:py-4 rounded-full bg-white text-black font-bold text-sm sm:text-base hover:bg-zinc-100 active:scale-95 transition-all shadow-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                         >
-                          Salvar alterações
+                          {isSavingEditTx ? "Salvando..." : "Salvar alterações"}
                         </button>
                       </div>
                     )}
@@ -4809,6 +4857,36 @@ export function ExtratoClient({
       </Portal>
     );
   })()}
+
+  {/* Toast global de feedback (sucesso/erro ao salvar transação) */}
+  {txFeedbackToast && (
+    <Portal>
+      <div className="fixed top-[max(1.25rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-[200] px-4 w-full max-w-[420px] pointer-events-none animate-in fade-in slide-in-from-top-2 duration-200">
+        <div
+          className={`pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-2xl border shadow-2xl backdrop-blur-md text-xs sm:text-sm font-semibold ${
+            txFeedbackToast.type === "success"
+              ? "bg-emerald-950/95 border-emerald-500/40 text-emerald-200"
+              : "bg-rose-950/95 border-rose-500/40 text-rose-200"
+          }`}
+        >
+          {txFeedbackToast.type === "success" ? (
+            <Check className="w-4 h-4 shrink-0 text-emerald-400" />
+          ) : (
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+          )}
+          <span className="flex-1">{txFeedbackToast.message}</span>
+          <button
+            type="button"
+            onClick={() => setTxFeedbackToast(null)}
+            className="text-zinc-400 hover:text-white cursor-pointer"
+            aria-label="Fechar aviso"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </Portal>
+  )}
     </>
   );
 

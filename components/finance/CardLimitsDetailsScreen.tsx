@@ -89,6 +89,7 @@ export function CardLimitsDetailsScreen({
 }: CardLimitsDetailsScreenProps) {
   const [activeTab, setActiveTab] = useState<CardLimitsTab>(initialTab);
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [selectedInvoiceMonthIdx, setSelectedInvoiceMonthIdx] = useState<number>(3);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -282,6 +283,65 @@ export function CardLimitsDetailsScreen({
         sixMonthForecast: forecast,
       };
     }, [allTransactions, activeInstallmentGroups, installments]);
+
+  // Gráfico de Faturas (3 meses anteriores + mês atual + 2 próximos meses)
+  const invoiceHistory = useMemo(() => {
+    const monthShorts = [
+      "JAN",
+      "FEV",
+      "MAR",
+      "ABR",
+      "MAI",
+      "JUN",
+      "JUL",
+      "AGO",
+      "SET",
+      "OUT",
+      "NOV",
+      "DEZ",
+    ];
+    const now = new Date();
+    const baseYear = now.getFullYear();
+    const baseMonth = now.getMonth();
+
+    const items = [];
+    for (let offset = -3; offset <= 2; offset++) {
+      const d = new Date(baseYear, baseMonth + offset, 1);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const prefix = `${y}-${String(m + 1).padStart(2, "0")}`;
+      const label =
+        y === baseYear ? monthShorts[m] : `${monthShorts[m]}/${String(y).slice(-2)}`;
+
+      let amount = allTransactions
+        .filter(
+          (tx) =>
+            tx.type === "expense" &&
+            !tx.isHidden &&
+            (tx.paymentMethod === "credit" || Boolean(tx.creditCardId)) &&
+            (tx.dateGroup || tx.transactionDate || "").startsWith(prefix)
+        )
+        .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+
+      // Para o mês atual, prioriza o total consolidado das faturas caso não haja lançamentos filtrados
+      if (offset === 0 && amount === 0 && totalSpent > 0) {
+        amount = totalSpent;
+      }
+
+      items.push({
+        prefix,
+        label,
+        amount: Number(amount.toFixed(2)),
+        isCurrent: offset === 0,
+      });
+    }
+
+    const maxAmount = Math.max(...items.map((i) => i.amount), 1);
+    return items.map((i) => ({
+      ...i,
+      heightPct: i.amount > 0 ? Math.max(12, Math.round((i.amount / maxAmount) * 100)) : 6,
+    }));
+  }, [allTransactions, totalSpent]);
 
   if (!isOpen) return null;
 
@@ -494,7 +554,69 @@ export function CardLimitsDetailsScreen({
             )}
 
             {activeTab === "faturas" && (
-              <>
+              <div className="flex flex-col gap-5 pt-1">
+                {/* Resumo + Gráfico de Faturas */}
+                <div className="rounded-[24px] bg-white/[0.04] border border-white/[0.08] p-4 flex flex-col gap-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-zinc-400">
+                        {invoiceHistory[selectedInvoiceMonthIdx]?.isCurrent
+                          ? "Fatura atual"
+                          : `Fatura de ${invoiceHistory[selectedInvoiceMonthIdx]?.label || ""}`}
+                      </p>
+                      <p
+                        className={`text-2xl sm:text-3xl font-extrabold tracking-tight text-white mt-0.5 ${
+                          isPrivacyHidden ? "balance-blur" : ""
+                        }`}
+                      >
+                        R${" "}
+                        {formatCurrency(
+                          invoiceHistory[selectedInvoiceMonthIdx]?.amount ?? totalSpent
+                        )}
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full bg-white/[0.08] text-[11px] font-semibold text-zinc-300">
+                      {cards.length} {cards.length === 1 ? "cartão" : "cartões"}
+                    </span>
+                  </div>
+
+                  {/* Barras dos últimos e próximos meses */}
+                  <div className="grid grid-cols-6 gap-2 items-end h-28 pt-2">
+                    {invoiceHistory.map((item, idx) => {
+                      const isSelected = selectedInvoiceMonthIdx === idx;
+                      return (
+                        <button
+                          key={item.prefix}
+                          type="button"
+                          onClick={() => setSelectedInvoiceMonthIdx(idx)}
+                          className="flex flex-col items-center justify-end gap-2 h-full cursor-pointer group"
+                          title={`${item.label}: R$ ${formatCurrency(item.amount)}`}
+                        >
+                          <div className="w-full flex-1 flex items-end justify-center">
+                            <div
+                              className={`w-6 sm:w-7 rounded-t-xl rounded-b-md transition-all duration-300 ${
+                                isSelected
+                                  ? "bg-[#ccff00] shadow-[0_0_12px_rgba(204,255,0,0.35)]"
+                                  : item.amount > 0
+                                  ? "bg-white/20 group-hover:bg-white/35"
+                                  : "bg-white/[0.06]"
+                              }`}
+                              style={{ height: `${item.heightPct}%` }}
+                            />
+                          </div>
+                          <span
+                            className={`text-[10px] font-semibold ${
+                              isSelected ? "text-white" : "text-zinc-500"
+                            }`}
+                          >
+                            {item.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {cards.length === 0 ? (
                   <div className="flex justify-center pt-2">
                     <div className="inline-flex items-center gap-2.5 px-5 py-3 rounded-2xl bg-white/[0.04] border border-white/[0.08] text-sm text-zinc-400">
@@ -577,7 +699,7 @@ export function CardLimitsDetailsScreen({
                     )}
                   </div>
                 )}
-              </>
+              </div>
             )}
 
             {activeTab === "parcelas" && (

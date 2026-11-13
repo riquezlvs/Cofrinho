@@ -1,9 +1,14 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createTransaction, createPerson, deleteTransaction, updateTransaction } from "@/lib/finance";
 
 export async function addTransactionAction(payload: Parameters<typeof createTransaction>[0]) {
-  return await createTransaction(payload);
+  const res = await createTransaction(payload);
+  if (res.success) {
+    revalidatePath("/", "layout");
+  }
+  return res;
 }
 
 export async function createPersonAction(payload: Parameters<typeof createPerson>[0]) {
@@ -11,12 +16,20 @@ export async function createPersonAction(payload: Parameters<typeof createPerson
 }
 
 export async function deleteTransactionAction(transactionId: string) {
-  return await deleteTransaction(transactionId);
+  const res = await deleteTransaction(transactionId);
+  if (res.success) {
+    revalidatePath("/", "layout");
+  }
+  return res;
 }
 
 export async function updateTransactionAction(
   transactionId: string,
   updates: Parameters<typeof updateTransaction>[1]
 ) {
-  return await updateTransaction(transactionId, updates);
+  const res = await updateTransaction(transactionId, updates);
+  if (res.success) {
+    revalidatePath("/", "layout");
+  }
+  return res;
 }

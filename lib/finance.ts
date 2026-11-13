@@ -1334,6 +1334,15 @@ export async function updateTransaction(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const realTxId = transactionId.replace(/-parc-\d+$/, "");
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(realTxId)) {
+      return {
+        success: false,
+        error: "Transação local/demonstração não pode ser persistida no banco.",
+      };
+    }
+
     const supabase = createAdminClient();
     const payload: Record<string, unknown> = {};
     if (updates.description !== undefined) payload.description = updates.description;
@@ -1370,7 +1379,7 @@ export async function updateTransaction(
         const { data: currentTx } = await supabase
           .from("transactions")
           .select("tags")
-          .eq("id", transactionId)
+          .eq("id", realTxId)
           .single();
         let nextTags: string[] = Array.isArray(currentTx?.tags) ? [...currentTx.tags] : [];
         if (updates.isHidden !== undefined) {
@@ -1393,27 +1402,32 @@ export async function updateTransaction(
     }
 
     if (updates.splits !== undefined) {
-      try {
-        const { data: usersData } = await supabase.auth.admin.listUsers();
-        const userId = usersData?.users?.[0]?.id;
-        await supabase.from("splits").delete().eq("transaction_id", transactionId);
-        if (updates.splits.length > 0 && userId) {
-          const splitRows = updates.splits
-            .filter((sp) => sp.personId && !sp.personId.startsWith("p-"))
-            .map((sp) => ({
-              user_id: userId,
-              transaction_id: transactionId,
-              person_id: sp.personId,
-              amount_owed: sp.amountOwed,
-              direction: "receivable",
-              is_paid: sp.isPaid || false,
-            }));
-          if (splitRows.length > 0) {
-            await supabase.from("splits").insert(splitRows);
+      const { data: usersData } = await supabase.auth.admin.listUsers();
+      const userId = usersData?.users?.[0]?.id;
+      const { error: deleteSplitErr } = await supabase
+        .from("splits")
+        .delete()
+        .eq("transaction_id", realTxId);
+      if (deleteSplitErr) {
+        return { success: false, error: `Erro ao limpar rateio: ${deleteSplitErr.message}` };
+      }
+      if (updates.splits.length > 0 && userId) {
+        const splitRows = updates.splits
+          .filter((sp) => sp.personId && !sp.personId.startsWith("p-"))
+          .map((sp) => ({
+            user_id: userId,
+            transaction_id: realTxId,
+            person_id: sp.personId,
+            amount_owed: sp.amountOwed,
+            direction: "receivable",
+            is_paid: sp.isPaid || false,
+          }));
+        if (splitRows.length > 0) {
+          const { error: insertSplitErr } = await supabase.from("splits").insert(splitRows);
+          if (insertSplitErr) {
+            return { success: false, error: `Erro ao salvar rateio: ${insertSplitErr.message}` };
           }
         }
-      } catch (splitErr) {
-        console.warn("Could not update splits:", splitErr);
       }
     }
 
@@ -1422,7 +1436,7 @@ export async function updateTransaction(
         const { data: currentTx } = await supabase
           .from("transactions")
           .select("installment_group_id")
-          .eq("id", transactionId)
+          .eq("id", realTxId)
           .single();
         if (currentTx?.installment_group_id) {
           const groupPayload: Record<string, unknown> = {};
@@ -1433,18 +1447,22 @@ export async function updateTransaction(
           if (updates.accountId !== undefined) groupPayload.account_id = payload.account_id;
           if (updates.creditCardId !== undefined) groupPayload.credit_card_id = payload.credit_card_id;
           if (updates.installmentTotal !== undefined) groupPayload.installment_total = updates.installmentTotal;
-          await supabase
-            .from("transactions")
-            .update(groupPayload)
-            .eq("installment_group_id", currentTx.installment_group_id);
+          if (Object.keys(groupPayload).length > 0) {
+            await supabase
+              .from("transactions")
+              .update(groupPayload)
+              .eq("installment_group_id", currentTx.installment_group_id);
+          }
         }
       } catch (groupErr) {
         console.warn("Could not update installment group:", groupErr);
       }
     }
 
-    const { error } = await supabase.from("transactions").update(payload).eq("id", transactionId);
-    if (error) return { success: false, error: error.message };
+    if (Object.keys(payload).length > 0) {
+      const { error } = await supabase.from("transactions").update(payload).eq("id", realTxId);
+      if (error) return { success: false, error: error.message };
+    }
     return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro desconhecido";

@@ -133,8 +133,12 @@ export function DashboardClient({
       handleNavigateFluxo();
       return;
     }
-    if (widgetName === "transacoes" || widgetName === "fatura" || widgetName === "extrato") {
+    if (widgetName === "transacoes" || widgetName === "extrato") {
       handleNavigateExtrato();
+      return;
+    }
+    if (widgetName === "fatura") {
+      setCardLimitsModalTab("faturas");
       return;
     }
     if (widgetName === "assinaturas") {
