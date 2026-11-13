@@ -1,57 +1,91 @@
 "use client";
 
 import React from "react";
+import { ChevronRight } from "lucide-react";
+import { CategorySpend } from "@/types/finance";
 
 interface MonthlySpendingCardProps {
   totalSpent: number;
   limitPlanned?: number;
   percentageConsumed?: number;
+  categories?: CategorySpend[];
   isPrivacyHidden: boolean;
   onOpenDetails?: () => void;
 }
 
+const DEFAULT_SEGMENT_COLORS = [
+  "#ff6b00",
+  "#ccff00",
+  "#38bdf8",
+  "#a855f7",
+  "#ec4899",
+  "#f59e0b",
+];
+
 export function MonthlySpendingCard({
   totalSpent,
-  limitPlanned = 4000.0,
-  percentageConsumed,
+  categories = [],
   isPrivacyHidden,
   onOpenDetails,
 }: MonthlySpendingCardProps) {
-  const percentage =
-    percentageConsumed !== undefined
-      ? percentageConsumed
-      : limitPlanned > 0
-      ? Math.min(100, Math.round((totalSpent / limitPlanned) * 100))
-      : 0;
-
-  // Garante que haja um indicador visual mesmo com 0 gastos ou gastos iniciais
-  const displayProgress = Math.max(2, Math.min(100, percentage));
+  const activeCategories = categories.filter((c) => c.amount > 0);
+  const categoryCount = activeCategories.length;
+  const totalCategoryAmount = activeCategories.reduce((sum, c) => sum + c.amount, 0);
 
   return (
     <div
       onClick={onOpenDetails}
-      className="w-full rounded-[28px] liquid-glass-card p-5 border border-white/[0.12] flex flex-col justify-between min-h-[148px] shadow-2xl cursor-pointer group hover:border-white/30 transition-all duration-300"
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpenDetails?.();
+        }
+      }}
+      className="w-full rounded-[28px] liquid-glass-card p-5 border border-white/[0.12] flex flex-col justify-between min-h-[164px] shadow-2xl cursor-pointer group hover:border-white/30 transition-all duration-300 active:scale-[0.99] select-none"
     >
-      {/* Top Header: Gastos do mês > */}
-      <div className="flex items-center justify-between pb-2 border-b border-white/[0.08]">
-        <span className="text-xs font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors">
-          Gastos do mês
-        </span>
-        <svg
-          className="w-4 h-4 text-zinc-500 group-hover:text-white transition-colors"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          viewBox="0 0 24 24"
-        >
-          <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+      {/* Top Row: Chevron > */}
+      <div className="flex items-center justify-end">
+        <ChevronRight className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" />
       </div>
 
-      {/* Valor do Gasto */}
-      <div className="py-2 flex flex-col">
+      {/* Middle Row: Barra horizontal segmentada por categorias */}
+      <div className="py-3">
+        {activeCategories.length > 0 && totalCategoryAmount > 0 ? (
+          <div className="w-full h-5 sm:h-6 flex items-center gap-1.5">
+            {activeCategories.map((cat, idx) => {
+              const pct = (cat.amount / totalCategoryAmount) * 100;
+              const barColor =
+                cat.color || DEFAULT_SEGMENT_COLORS[idx % DEFAULT_SEGMENT_COLORS.length];
+              return (
+                <div
+                  key={`${cat.name}-${idx}`}
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.max(4, pct)}%`,
+                    backgroundColor: barColor,
+                  }}
+                  title={`${cat.name}: R$ ${cat.amount.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}`}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <div className="w-full h-5 sm:h-6 rounded-full bg-white/[0.08]" />
+        )}
+      </div>
+
+      {/* Bottom Row: Gastos • este mês, Valor e Quantidade de categorias */}
+      <div className="flex flex-col gap-0.5 pt-1">
+        <span className="text-xs sm:text-[13px] font-medium text-zinc-400 group-hover:text-zinc-300 transition-colors">
+          Gastos • este mês
+        </span>
         <span
-          className={`text-3xl font-extrabold tracking-tight text-white ${
+          className={`text-2xl sm:text-[28px] font-extrabold tracking-tight text-white leading-tight ${
             isPrivacyHidden ? "balance-blur" : ""
           }`}
         >
@@ -61,23 +95,13 @@ export function MonthlySpendingCard({
             maximumFractionDigits: 2,
           })}
         </span>
-      </div>
-
-      {/* Barra de Progresso Verde Neon com Ponto Marcador na Ponta */}
-      <div className="pt-2">
-        <div className="relative w-full h-1.5 bg-white/[0.08] rounded-full flex items-center">
-          {/* Trilha Verde Neon preenchida */}
-          <div
-            className="h-full bg-[#a6e22e] rounded-full transition-all duration-500"
-            style={{ width: `${displayProgress}%` }}
-          />
-
-          {/* Marcador circular luminoso na extremidade */}
-          <div
-            className="absolute -top-[3px] w-3 h-3 rounded-full bg-[#ccff00] border-2 border-zinc-900 shadow-[0_0_8px_#ccff00] transition-all duration-500 -ml-1.5"
-            style={{ left: `${displayProgress}%` }}
-          />
-        </div>
+        <span className="text-xs sm:text-[13px] font-medium text-zinc-400 mt-0.5">
+          {categoryCount === 0
+            ? "Nenhuma categoria"
+            : categoryCount === 1
+            ? "1 categoria"
+            : `${categoryCount} categorias`}
+        </span>
       </div>
     </div>
   );

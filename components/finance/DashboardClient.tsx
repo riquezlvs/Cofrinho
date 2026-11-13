@@ -8,6 +8,7 @@ import { AccountsOverviewCard } from "@/components/finance/AccountsOverviewCard"
 import { AccountsDetailsScreen } from "@/components/finance/AccountsDetailsScreen";
 import { SubscriptionsDetailsScreen } from "@/components/finance/SubscriptionsDetailsScreen";
 import { MonthlySpendingCard } from "@/components/finance/MonthlySpendingCard";
+import { SpendingDetailsScreen } from "@/components/finance/SpendingDetailsScreen";
 import { BentoDashboardGrid } from "@/components/finance/BentoDashboardGrid";
 import { FloatingCofrinhoDock } from "@/components/finance/FloatingCofrinhoDock";
 import { CardsTabClient } from "@/components/finance/CardsTabClient";
@@ -18,12 +19,14 @@ import {
   SubscriptionSummary,
   SubscriptionItem,
   ExtratoTransaction,
+  ExtratoCategory,
 } from "@/types/finance";
 import { TrendingUp } from "lucide-react";
 
 export interface DashboardClientProps {
   initialData: DashboardData;
   allTransactions?: ExtratoTransaction[];
+  allCategories?: ExtratoCategory[];
   embedded?: boolean;
   isPrivacyHidden?: boolean;
   onTogglePrivacy?: () => void;
@@ -36,6 +39,7 @@ export interface DashboardClientProps {
 export function DashboardClient({
   initialData,
   allTransactions,
+  allCategories,
   embedded = false,
   isPrivacyHidden: externalPrivacy,
   onTogglePrivacy: externalTogglePrivacy,
@@ -52,6 +56,7 @@ export function DashboardClient({
   const [extraAccounts, setExtraAccounts] = useState<AccountSummary[]>([]);
   const [isAccountsDetailsOpen, setIsAccountsDetailsOpen] = useState(false);
   const [isSubscriptionsDetailsOpen, setIsSubscriptionsDetailsOpen] = useState(false);
+  const [isSpendingDetailsOpen, setIsSpendingDetailsOpen] = useState(false);
   const [subscriptionsState, setSubscriptionsState] = useState<SubscriptionSummary>(
     initialData.subscriptions
   );
@@ -272,13 +277,14 @@ export function DashboardClient({
               onOpenDetails={() => setIsAccountsDetailsOpen(true)}
             />
 
-            {/* 3. Cartão Largura Total: Gastos do Mês com barra verde neon e marcador dinâmico */}
+            {/* 3. Cartão Largura Total: Gastos • este mês com barra segmentada por categorias */}
             <MonthlySpendingCard
               totalSpent={initialData.monthOverview.totalSpent}
               limitPlanned={initialData.monthOverview.limitPlanned}
               percentageConsumed={initialData.monthOverview.percentageConsumed}
+              categories={initialData.monthOverview.categories}
               isPrivacyHidden={isPrivacyHidden}
-              onOpenDetails={handleNavigateExtrato}
+              onOpenDetails={() => setIsSpendingDetailsOpen(true)}
             />
 
             {/* 4. Grid Bento de Widgets (Categorias, Fluxo de Caixa, Limite Usado, Parcelamentos, Fatura, Assinaturas) */}
@@ -301,7 +307,19 @@ export function DashboardClient({
                 R$ {formatCurrency(totalAccountsBalance)} parado poderia render mais em um cofrinho
               </span>
             </div>
-          </>
+            {/* Tela de Detalhes de Gastos do Mês (Categorias e Grupos) */}
+      <SpendingDetailsScreen
+        isOpen={isSpendingDetailsOpen}
+        onClose={() => setIsSpendingDetailsOpen(false)}
+        allTransactions={allTransactions}
+        allCategories={allCategories}
+        fallbackTotalSpent={initialData.monthOverview.totalSpent}
+        fallbackCategories={initialData.monthOverview.categories}
+        isPrivacyHidden={isPrivacyHidden}
+        onTogglePrivacy={handleTogglePrivacy}
+        onViewExtrato={handleNavigateExtrato}
+      />
+    </>
         )}
       </div>
 
@@ -361,6 +379,18 @@ export function DashboardClient({
           });
           router.refresh();
         }}
+      />
+      {/* Tela de Detalhes de Gastos do Mês (Categorias e Grupos) */}
+      <SpendingDetailsScreen
+        isOpen={isSpendingDetailsOpen}
+        onClose={() => setIsSpendingDetailsOpen(false)}
+        allTransactions={allTransactions}
+        allCategories={allCategories}
+        fallbackTotalSpent={initialData.monthOverview.totalSpent}
+        fallbackCategories={initialData.monthOverview.categories}
+        isPrivacyHidden={isPrivacyHidden}
+        onTogglePrivacy={handleTogglePrivacy}
+        onViewExtrato={handleNavigateExtrato}
       />
     </>
   );
