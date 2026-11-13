@@ -10,7 +10,9 @@ import { SubscriptionsDetailsScreen } from "@/components/finance/SubscriptionsDe
 import { MonthlySpendingCard } from "@/components/finance/MonthlySpendingCard";
 import { MonthlySpendingDetailsScreen } from "@/components/finance/MonthlySpendingDetailsScreen";
 import { SpendingDetailsScreen } from "@/components/finance/SpendingDetailsScreen";
+import { CardLimitsDetailsScreen, CardLimitsTab } from "@/components/finance/CardLimitsDetailsScreen";
 import { BentoDashboardGrid } from "@/components/finance/BentoDashboardGrid";
+import { RecentTransactionsCard } from "@/components/finance/RecentTransactionsCard";
 import { FloatingCofrinhoDock } from "@/components/finance/FloatingCofrinhoDock";
 import { CardsTabClient } from "@/components/finance/CardsTabClient";
 import {
@@ -59,6 +61,7 @@ export function DashboardClient({
   const [isSubscriptionsDetailsOpen, setIsSubscriptionsDetailsOpen] = useState(false);
   const [isMonthlySpendingDetailsOpen, setIsMonthlySpendingDetailsOpen] = useState(false);
   const [isSpendingDetailsOpen, setIsSpendingDetailsOpen] = useState(false);
+  const [cardLimitsModalTab, setCardLimitsModalTab] = useState<CardLimitsTab | null>(null);
   const [subscriptionsState, setSubscriptionsState] = useState<SubscriptionSummary>(
     initialData.subscriptions
   );
@@ -140,6 +143,14 @@ export function DashboardClient({
     }
     if (widgetName === "gastos-categorias") {
       setIsSpendingDetailsOpen(true);
+      return;
+    }
+    if (widgetName === "limite") {
+      setCardLimitsModalTab("limites");
+      return;
+    }
+    if (widgetName === "parcelamentos") {
+      setCardLimitsModalTab("parcelas");
       return;
     }
     console.log("Widget clicado:", widgetName);
@@ -297,6 +308,7 @@ export function DashboardClient({
             <BentoDashboardGrid
               isPrivacyHidden={isPrivacyHidden}
               creditCard={activeDefaultCard}
+              creditCards={cards}
               subscriptions={subscriptionsState}
               categories={initialData.monthOverview.categories}
               totalMonthSpent={initialData.monthOverview.totalSpent}
@@ -305,6 +317,14 @@ export function DashboardClient({
               installments={initialData.installments}
               onWidgetClick={handleWidgetClick}
               onAddWidgets={handleAddWidgets}
+            />
+
+            {/* 5. Cartão Largura Total: 3 Últimas Transações */}
+            <RecentTransactionsCard
+              allTransactions={allTransactions}
+              recentTransactions={initialData.recentTransactions || []}
+              isPrivacyHidden={isPrivacyHidden}
+              onOpenExtrato={handleNavigateExtrato}
             />
 
             {/* Insight / Notificação sutil com efeito Liquid Glass */}
@@ -337,6 +357,20 @@ export function DashboardClient({
         onTogglePrivacy={handleTogglePrivacy}
         onViewExtrato={handleNavigateExtrato}
       />
+      {/* Tela de Detalhes de Faturas, Parcelas e Limites */}
+      {cardLimitsModalTab !== null && (
+        <CardLimitsDetailsScreen
+          key={cardLimitsModalTab}
+          isOpen={true}
+          initialTab={cardLimitsModalTab}
+          onClose={() => setCardLimitsModalTab(null)}
+          cards={cards}
+          installments={initialData.installments}
+          allTransactions={allTransactions}
+          isPrivacyHidden={isPrivacyHidden}
+          onTogglePrivacy={handleTogglePrivacy}
+        />
+      )}
     </>
         )}
       </div>
@@ -421,6 +455,20 @@ export function DashboardClient({
         onTogglePrivacy={handleTogglePrivacy}
         onViewExtrato={handleNavigateExtrato}
       />
+      {/* Tela de Detalhes de Faturas, Parcelas e Limites */}
+      {cardLimitsModalTab !== null && (
+        <CardLimitsDetailsScreen
+          key={cardLimitsModalTab}
+          isOpen={true}
+          initialTab={cardLimitsModalTab}
+          onClose={() => setCardLimitsModalTab(null)}
+          cards={cards}
+          installments={initialData.installments}
+          allTransactions={allTransactions}
+          isPrivacyHidden={isPrivacyHidden}
+          onTogglePrivacy={handleTogglePrivacy}
+        />
+      )}
     </>
   );
 

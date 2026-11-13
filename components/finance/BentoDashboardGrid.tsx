@@ -7,6 +7,7 @@ import { getGoogleFaviconUrl, detectBrand } from "@/lib/brands";
 interface BentoDashboardGridProps {
   isPrivacyHidden: boolean;
   creditCard: CreditCardSummary;
+  creditCards?: CreditCardSummary[];
   subscriptions: SubscriptionSummary;
   categories: CategorySpend[];
   totalMonthSpent?: number;
@@ -121,6 +122,7 @@ function CardWidgetIcon({ cardName }: { cardName: string }) {
 export function BentoDashboardGrid({
   isPrivacyHidden,
   creditCard,
+  creditCards,
   subscriptions,
   categories,
   totalMonthSpent,
@@ -226,81 +228,168 @@ export function BentoDashboardGrid({
           </div>
         </div>
 
-        {/* Widget 3: Limite Usado com Donut Ring (Middle Left) */}
-        <div
-          onClick={() => onWidgetClick?.("limite")}
-          className="rounded-[28px] liquid-glass-card p-4 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300"
-        >
-          <div className="flex items-start justify-between pb-2 border-b border-white/[0.08]">
-            {/* Circular Gauge / Donut */}
-            <div className="relative w-10 h-10 flex items-center justify-center">
-              <svg className="w-10 h-10 -rotate-90" viewBox="0 0 36 36">
-                <circle
-                  cx="18"
-                  cy="18"
-                  r="14"
+        {/* Widget 3: Limite Usado com Donut Ring espesso (Middle Left) */}
+        {(() => {
+          const cardList =
+            creditCards && creditCards.length > 0 ? creditCards : [creditCard];
+          const totalUsed = cardList.reduce((s, c) => s + Number(c.spent || 0), 0);
+          const totalLim = cardList.reduce((s, c) => s + Number(c.limit || 0), 0);
+          const totalDisp = Math.max(0, totalLim - totalUsed);
+          const pct =
+            totalLim > 0 ? Math.min(100, Math.round((totalUsed / totalLim) * 100)) : 0;
+          const ringRadius = 17;
+          const ringCirc = 2 * Math.PI * ringRadius;
+          const arcLen = (pct / 100) * ringCirc;
+
+          return (
+            <div
+              onClick={() => onWidgetClick?.("limite")}
+              className="rounded-[28px] liquid-glass-card p-4 sm:p-5 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300 active:scale-[0.98] select-none"
+            >
+              <div className="flex items-start justify-between">
+                {/* Circular Gauge / Donut espesso sem texto interno */}
+                <div className="relative w-12 h-12 flex items-center justify-center">
+                  <svg className="w-12 h-12 -rotate-90" viewBox="0 0 44 44">
+                    <circle
+                      cx="22"
+                      cy="22"
+                      r={ringRadius}
+                      fill="none"
+                      className="stroke-white/[0.12]"
+                      strokeWidth="6"
+                    />
+                    {pct > 0 && (
+                      <circle
+                        cx="22"
+                        cy="22"
+                        r={ringRadius}
+                        fill="none"
+                        className="stroke-[#ccff00] transition-all duration-500"
+                        strokeWidth="6"
+                        strokeDasharray={`${arcLen.toFixed(2)} ${ringCirc.toFixed(2)}`}
+                        strokeLinecap="round"
+                      />
+                    )}
+                  </svg>
+                </div>
+
+                <svg
+                  className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors mt-0.5"
                   fill="none"
-                  className="stroke-white/10"
-                  strokeWidth="3.5"
-                />
-                <circle
-                  cx="18"
-                  cy="18"
-                  r="14"
-                  fill="none"
-                  className="stroke-lime-400"
-                  strokeWidth="3.5"
-                  strokeDasharray={`${(creditCard.percentage / 100) * 88} 88`}
-                  strokeLinecap="round"
-                />
-              </svg>
-              <span className="absolute text-[9px] font-bold text-white">
-                {creditCard.percentage}%
-              </span>
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+
+              <div className="flex flex-col gap-0.5 pt-2">
+                <span className="text-xs sm:text-[13px] font-medium text-zinc-400">
+                  Limite usado
+                </span>
+                <span
+                  className={`text-xl sm:text-[22px] font-extrabold text-white tracking-tight leading-tight ${
+                    isPrivacyHidden ? "balance-blur" : ""
+                  }`}
+                >
+                  R$ {formatCurrency(totalUsed)}
+                </span>
+                <span
+                  className={`text-xs sm:text-[13px] font-medium text-zinc-400 mt-0.5 ${
+                    isPrivacyHidden ? "balance-blur" : ""
+                  }`}
+                >
+                  Disp: R$ {formatCurrency(totalDisp)}
+                </span>
+              </div>
             </div>
-
-            <svg className="w-3.5 h-3.5 text-zinc-500 group-hover:text-white transition-colors" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-
-          <div className="flex flex-col gap-0.5 pt-2">
-            <span className="text-[11px] font-medium text-zinc-400">Limite usado</span>
-            <span className={`text-base font-bold text-white tracking-tight ${isPrivacyHidden ? "balance-blur" : ""}`}>
-              R$ {formatCurrency(creditCard.spent)}
-            </span>
-            <span className={`text-[10px] text-zinc-400 ${isPrivacyHidden ? "balance-blur" : ""}`}>
-              Disp: R$ {formatCurrency(Math.max(0, creditCard.limit - creditCard.spent))}
-            </span>
-          </div>
-        </div>
+          );
+        })()}
 
         {/* Widget 4: Parcelamentos (Middle Right) */}
-        <div
-          onClick={() => onWidgetClick?.("parcelamentos")}
-          className="rounded-[28px] liquid-glass-card p-4 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300"
-        >
-          <div className="flex items-start justify-between pb-2 border-b border-white/[0.08]">
-            <div className="w-8 h-8 rounded-full bg-white/[0.08] border border-white/15 flex items-center justify-center text-zinc-300 group-hover:text-purple-400 group-hover:bg-purple-500/10 transition-colors shadow-inner">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M4 6h16M4 10h16M4 14h8M4 18h4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <svg className="w-3.5 h-3.5 text-zinc-500 group-hover:text-white transition-colors" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
+        {(() => {
+          const hasData = installments.totalRemaining > 0 && installments.activeCount > 0;
+          return (
+            <div
+              onClick={() => onWidgetClick?.("parcelamentos")}
+              className="rounded-[28px] liquid-glass-card p-4 sm:p-5 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300 active:scale-[0.98] select-none"
+            >
+              <div className="flex items-start justify-end">
+                <svg
+                  className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
 
-          <div className="flex flex-col gap-0.5 pt-2">
-            <span className="text-[11px] font-medium text-zinc-400">Parcelamentos</span>
-            <span className={`text-base font-bold text-white tracking-tight ${isPrivacyHidden ? "balance-blur" : ""}`}>
-              R$ {formatCurrency(installments.totalRemaining)}
-            </span>
-            <span className="text-[10px] text-zinc-400">
-              {installments.activeCount} compras em andamento
-            </span>
-          </div>
-        </div>
+              {hasData ? (
+                <>
+                  <div className="py-2 flex items-end gap-1.5 h-10">
+                    {[100, 82, 68, 52, 38, 24].map((h, idx) => (
+                      <div
+                        key={idx}
+                        className="flex-1 rounded-full bg-purple-400/75 group-hover:bg-purple-400 transition-all duration-300"
+                        style={{ height: `${h}%` }}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="flex flex-col gap-0.5 pt-1">
+                    <span className="text-xs sm:text-[13px] font-medium text-zinc-400">
+                      Parcelamentos
+                    </span>
+                    <span
+                      className={`text-xl sm:text-[22px] font-extrabold text-white tracking-tight leading-tight ${
+                        isPrivacyHidden ? "balance-blur" : ""
+                      }`}
+                    >
+                      R$ {formatCurrency(installments.totalRemaining)}
+                    </span>
+                    <span className="text-[11px] font-medium text-zinc-400 mt-0.5">
+                      {installments.activeCount}{" "}
+                      {installments.activeCount === 1 ? "compra" : "compras"} em andamento
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-col items-center justify-center gap-1.5 py-2 text-center">
+                    <svg
+                      className="w-5 h-5 text-zinc-500"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.17-2.69M19 13a10 10 0 0 0-3.17-2.12M12 20h.01"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <span className="text-xs font-medium text-zinc-400 leading-tight">
+                      Sem dados disponíveis
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-0.5 pt-1">
+                    <span className="text-xs sm:text-[13px] font-medium text-zinc-400">
+                      Parcelamentos
+                    </span>
+                    <span className="text-xl font-extrabold text-white leading-tight">
+                      —
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Widget 5: Fatura Atual com Logo Oficial do Banco do Cartão (Bottom Left) */}
         <div
