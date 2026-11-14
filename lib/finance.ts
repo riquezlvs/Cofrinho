@@ -815,9 +815,16 @@ export async function getExtratoData(): Promise<ExtratoData> {
 
     const today = new Date().toISOString().split("T")[0];
 
+    const distinctDatesInGroup = new Set(
+      existingParcelsInDb.map((ep) => ep.transaction_date).filter(Boolean)
+    );
+    const allSameTransactionDate = distinctDatesInGroup.size <= 1;
+
     // Determina a data correta da parcela:
-    // Se houver competence_date (YYYY-MM-01) e transaction_date (YYYY-MM-DD),
-    // a parcela é alocada no ano/mês da respectiva fatura, mantendo o dia da compra original.
+    // 1. Se houver competence_date (YYYY-MM-01) e transaction_date (YYYY-MM-DD),
+    //    usa o ano/mês da competência + dia da transaction_date.
+    // 2. Se cada parcela no banco já possui sua própria transaction_date distinta, usa-a diretamente.
+    // 3. Caso contrário (legado com mesma data em todas), projeta mês a mês a partir da base.
     const computeParcelDate = (txItem: typeof t, instIndex: number, baseDateStr: string) => {
       if (txItem.competence_date && txItem.transaction_date) {
         const [cYear, cMonth] = txItem.competence_date.split("-");
@@ -826,6 +833,9 @@ export async function getExtratoData(): Promise<ExtratoData> {
         const daysInTargetMonth = new Date(parseInt(cYear, 10), parseInt(cMonth, 10), 0).getDate();
         const finalDay = Math.min(dayNum, daysInTargetMonth);
         return `${cYear}-${cMonth}-${String(finalDay).padStart(2, "0")}`;
+      }
+      if (!allSameTransactionDate && txItem.transaction_date) {
+        return txItem.transaction_date;
       }
       return addMonths(baseDateStr, instIndex - 1);
     };
@@ -1335,6 +1345,8 @@ export async function updateTransaction(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const parcMatch = transactionId.match(/-parc-(\d+)$/);
+    const editedParcelNumber = parcMatch ? parseInt(parcMatch[1], 10) : null;
     const realTxId = transactionId.replace(/-parc-\d+$/, "");
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(realTxId)) {
@@ -1345,6 +1357,12 @@ export async function updateTransaction(
     }
 
     const supabase = createAdminClient();
+    const { data: existingTxMeta } = await supabase
+      .from("transactions")
+      .select("tags, competence_date, installment_group_id, installment_number")
+      .eq("id", realTxId)
+      .single();
+
     const payload: Record<string, unknown> = {};
     if (updates.description !== undefined) payload.description = updates.description;
     if (updates.amount !== undefined) payload.amount = updates.amount;
@@ -1363,11 +1381,21 @@ export async function updateTransaction(
     }
 
     let timeTagToSet: string | undefined;
+    let editedDateOnly: string | undefined;
     if (updates.transactionDate !== undefined) {
-      const dateOnly = updates.transactionDate.includes("T")
+      const rawDateOnly = updates.transactionDate.includes("T")
         ? updates.transactionDate.split("T")[0]
         : updates.transactionDate;
+      const currentInstNum = existingTxMeta?.installment_number || 1;
+      const dateOnly =
+        editedParcelNumber !== null
+          ? addMonths(rawDateOnly, currentInstNum - editedParcelNumber)
+          : rawDateOnly;
+      editedDateOnly = rawDateOnly;
       payload.transaction_date = dateOnly;
+      if (existingTxMeta?.competence_date) {
+        payload.competence_date = `${dateOnly.slice(0, 7)}-01`;
+      }
       if (updates.transactionDate.includes("T")) {
         const timePart = updates.transactionDate.split("T")[1]?.slice(0, 5);
         if (timePart) timeTagToSet = `#hora_${timePart}`;
@@ -1377,12 +1405,9 @@ export async function updateTransaction(
     if (updates.installmentTotal !== undefined) payload.installment_total = updates.installmentTotal;
     if (updates.isHidden !== undefined || timeTagToSet !== undefined) {
       try {
-        const { data: currentTx } = await supabase
-          .from("transactions")
-          .select("tags")
-          .eq("id", realTxId)
-          .single();
-        let nextTags: string[] = Array.isArray(currentTx?.tags) ? [...currentTx.tags] : [];
+        let nextTags: string[] = Array.isArray(existingTxMeta?.tags)
+          ? [...existingTxMeta.tags]
+          : [];
         if (updates.isHidden !== undefined) {
           if (updates.isHidden) {
             if (!nextTags.includes("hidden")) {
@@ -1432,27 +1457,47 @@ export async function updateTransaction(
       }
     }
 
-    if (updates.applyToAllInstallments) {
+    if (updates.applyToAllInstallments && existingTxMeta?.installment_group_id) {
       try {
-        const { data: currentTx } = await supabase
-          .from("transactions")
-          .select("installment_group_id")
-          .eq("id", realTxId)
-          .single();
-        if (currentTx?.installment_group_id) {
-          const groupPayload: Record<string, unknown> = {};
-          if (updates.description !== undefined) groupPayload.description = updates.description;
-          if (updates.amount !== undefined) groupPayload.amount = updates.amount;
-          if (updates.categoryId !== undefined) groupPayload.category_id = updates.categoryId;
-          if (updates.paymentMethod !== undefined) groupPayload.payment_method = updates.paymentMethod;
-          if (updates.accountId !== undefined) groupPayload.account_id = payload.account_id;
-          if (updates.creditCardId !== undefined) groupPayload.credit_card_id = payload.credit_card_id;
-          if (updates.installmentTotal !== undefined) groupPayload.installment_total = updates.installmentTotal;
-          if (Object.keys(groupPayload).length > 0) {
-            await supabase
-              .from("transactions")
-              .update(groupPayload)
-              .eq("installment_group_id", currentTx.installment_group_id);
+        const groupPayload: Record<string, unknown> = {};
+        if (updates.description !== undefined) groupPayload.description = updates.description;
+        if (updates.amount !== undefined) groupPayload.amount = updates.amount;
+        if (updates.categoryId !== undefined) groupPayload.category_id = updates.categoryId;
+        if (updates.paymentMethod !== undefined) groupPayload.payment_method = updates.paymentMethod;
+        if (updates.accountId !== undefined) groupPayload.account_id = payload.account_id;
+        if (updates.creditCardId !== undefined) groupPayload.credit_card_id = payload.credit_card_id;
+        if (updates.installmentTotal !== undefined) groupPayload.installment_total = updates.installmentTotal;
+        if (Object.keys(groupPayload).length > 0) {
+          await supabase
+            .from("transactions")
+            .update(groupPayload)
+            .eq("installment_group_id", existingTxMeta.installment_group_id);
+        }
+
+        if (editedDateOnly !== undefined) {
+          const { data: groupParcels } = await supabase
+            .from("transactions")
+            .select("id, installment_number, competence_date, tags")
+            .eq("installment_group_id", existingTxMeta.installment_group_id);
+          const anchorInst = editedParcelNumber ?? (existingTxMeta.installment_number || 1);
+          for (const gp of groupParcels || []) {
+            if (gp.id === realTxId) continue;
+            const delta = (gp.installment_number || 1) - anchorInst;
+            const shiftedDate = addMonths(editedDateOnly, delta);
+            const parcelUpdate: Record<string, unknown> = {
+              transaction_date: shiftedDate,
+            };
+            if (gp.competence_date) {
+              parcelUpdate.competence_date = `${shiftedDate.slice(0, 7)}-01`;
+            }
+            if (timeTagToSet !== undefined) {
+              const gpTags = Array.isArray(gp.tags)
+                ? gp.tags.filter((tg: string) => !tg.startsWith("#hora_"))
+                : [];
+              gpTags.push(timeTagToSet);
+              parcelUpdate.tags = gpTags;
+            }
+            await supabase.from("transactions").update(parcelUpdate).eq("id", gp.id);
           }
         }
       } catch (groupErr) {

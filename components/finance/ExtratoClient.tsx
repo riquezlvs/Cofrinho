@@ -643,9 +643,17 @@ export function ExtratoClient({
   const router = useRouter();
 
   // Estados principais de transações
+  const [prevInitialTransactions, setPrevInitialTransactions] = useState(
+    initialData.transactions
+  );
   const [transactions, setTransactions] = useState<ExtratoTransaction[]>(
     initialData.transactions || []
   );
+
+  if (initialData.transactions !== prevInitialTransactions) {
+    setPrevInitialTransactions(initialData.transactions);
+    setTransactions(initialData.transactions || []);
+  }
   const [internalPrivacy, setInternalPrivacy] = useState(false);
   const isPrivacyHidden = externalPrivacy !== undefined ? externalPrivacy : internalPrivacy;
 
@@ -3981,13 +3989,32 @@ export function ExtratoClient({
                   newSplits = [];
                 }
 
+                const dateParts = editTxDate.split("-");
+                const newFormattedDate =
+                  dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}` : editTxDate;
+
+                const updatedSchedule = selectedTx.installmentSchedule?.map((item) => {
+                  const delta = item.number - (selectedTx.installmentNumber || 1);
+                  const shifted = editTxApplyToAll ? addMonths(editTxDate, delta) : item.date;
+                  const p = shifted.split("-");
+                  return {
+                    ...item,
+                    date: shifted,
+                    formattedDate: p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : shifted,
+                    amount: newAmount,
+                  };
+                });
+
                 const updatedTx: ExtratoTransaction = {
                   ...selectedTx,
                   title: newTitle,
                   amount: newAmount,
                   originalTotalAmount: editTxInstallmentTotal > 1 ? newTotalAmount : undefined,
                   installmentTotal: editTxInstallmentTotal,
+                  installmentSchedule: updatedSchedule,
                   transactionDate: newDate,
+                  formattedDate: newFormattedDate,
+                  dateGroup: editTxDate,
                   paymentMethod: editTxPaymentMethod,
                   accountId: newAccountId || undefined,
                   creditCardId: newCreditCardId || undefined,
@@ -4046,12 +4073,24 @@ export function ExtratoClient({
                         selectedTx.installmentGroupId &&
                         t.installmentGroupId === selectedTx.installmentGroupId
                       ) {
+                        const delta =
+                          (t.installmentNumber || 1) - (selectedTx.installmentNumber || 1);
+                        const shiftedDate = addMonths(editTxDate, delta);
+                        const shiftedParts = shiftedDate.split("-");
+                        const shiftedFormatted =
+                          shiftedParts.length === 3
+                            ? `${shiftedParts[2]}/${shiftedParts[1]}`
+                            : shiftedDate;
                         return {
                           ...t,
                           title: newTitle,
                           amount: newAmount,
                           originalTotalAmount: newTotalAmount,
                           installmentTotal: editTxInstallmentTotal,
+                          installmentSchedule: updatedSchedule,
+                          transactionDate: `${shiftedDate}T${editTxTime || "12:00"}:00`,
+                          formattedDate: shiftedFormatted,
+                          dateGroup: shiftedDate,
                           paymentMethod: editTxPaymentMethod,
                           accountId: newAccountId || undefined,
                           creditCardId: newCreditCardId || undefined,
