@@ -33,8 +33,11 @@ export async function settlePersonSplitsAction(personId: string, transactionId?:
   return res;
 }
 
-export async function deleteTransactionAction(transactionId: string) {
-  const res = await deleteTransaction(transactionId);
+export async function deleteTransactionAction(
+  transactionId: string,
+  scope: "single" | "all" = "single"
+) {
+  const res = await deleteTransaction(transactionId, scope);
   if (res.success) {
     revalidatePath("/", "layout");
   }

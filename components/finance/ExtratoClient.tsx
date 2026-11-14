@@ -71,7 +71,12 @@ import {
   deleteTransactionAction,
   updateTransactionAction,
 } from "@/app/actions/transactions";
-import { addMonths, formatLongPortugueseDate, formatMediumPortugueseDate } from "@/lib/dateUtils";
+import { addMonths, formatLongPortugueseDate, formatMediumPortugueseDate, getLocalTodayIso } from "@/lib/dateUtils";
+import {
+  doesTransactionBelongToCycle,
+  formatDayMonthNumeric,
+  getBillingCycleByOffset,
+} from "@/lib/billingCycle";
 import { getGoogleFaviconUrl } from "@/lib/brands";
 import { Portal } from "@/components/ui/Portal";
 
@@ -89,6 +94,7 @@ export interface ExtratoClientProps {
 type FilterType = "all" | "income" | "expense" | "payment";
 type PeriodFilter =
   | "all"
+  | "invoice"
   | "today"
   | "yesterday"
   | "last7days"
@@ -484,6 +490,7 @@ const filterCategoryPresets = [
 ];
 
 const periodPills: { id: PeriodFilter; label: string; icon?: React.ComponentType<{ className?: string }> }[] = [
+  { id: "invoice", label: "Ciclo da fatura", icon: CreditCard },
   { id: "today", label: "Hoje" },
   { id: "yesterday", label: "Ontem" },
   { id: "last7days", label: "Últimos 7 dias" },
@@ -684,6 +691,8 @@ export function ExtratoClient({
   });
   const [isEditingSelectedTxCategory, setIsEditingSelectedTxCategory] = useState(false);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [deleteScope, setDeleteScope] = useState<"single" | "all">("single");
+  const [isDeletingTx, setIsDeletingTx] = useState(false);
   const [isEditTxModalOpen, setIsEditTxModalOpen] = useState(false);
   const [editTxTitle, setEditTxTitle] = useState("");
   const [editTxCentsAmount, setEditTxCentsAmount] = useState(0);
@@ -837,6 +846,7 @@ export function ExtratoClient({
 
   // Filtros avançados adaptados às imagens do anexo
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("currentMonth");
+  const [invoiceOffset, setInvoiceOffset] = useState<number>(0);
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
   const [selectedBankIds, setSelectedBankIds] = useState<string[]>([]);
@@ -890,9 +900,34 @@ export function ExtratoClient({
   };
 
   const toggleCardFilter = (cardId: string) => {
-    setSelectedCardIds((prev) =>
-      prev.includes(cardId) ? prev.filter((id) => id !== cardId) : [...prev, cardId]
-    );
+    setSelectedCardIds((prev) => {
+      const next = prev.includes(cardId)
+        ? prev.filter((id) => id !== cardId)
+        : [...prev, cardId];
+
+      if (next.length > 0 && (periodFilter === "currentMonth" || periodFilter === "lastMonth")) {
+        setPeriodFilter("invoice");
+        setInvoiceOffset(0);
+      } else if (next.length === 0 && periodFilter === "invoice") {
+        setPeriodFilter("currentMonth");
+        setInvoiceOffset(0);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleInvoiceQuickMode = () => {
+    if (periodFilter === "invoice") {
+      setPeriodFilter("currentMonth");
+      setInvoiceOffset(0);
+      return;
+    }
+    setPeriodFilter("invoice");
+    setInvoiceOffset(0);
+    if (selectedCardIds.length === 0 && availableCards.length > 0) {
+      const defaultCard = availableCards.find((c) => c.isDefault) || availableCards[0];
+      setSelectedCardIds([defaultCard.id]);
+    }
   };
 
   const toggleCategoryFilter = (catName: string) => {
@@ -928,7 +963,7 @@ export function ExtratoClient({
   const [newType, setNewType] = useState<"expense" | "income">("expense");
   const [centsAmount, setCentsAmount] = useState<number>(0);
   const [newTitle, setNewTitle] = useState("");
-  const [newDate, setNewDate] = useState("2026-11-08");
+  const [newDate, setNewDate] = useState(() => getLocalTodayIso());
   const [newTime, setNewTime] = useState(() => {
     const d = new Date();
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -1248,6 +1283,7 @@ export function ExtratoClient({
     setActiveFilter("all");
     setSearchQuery("");
     setPeriodFilter("all");
+    setInvoiceOffset(0);
     setCustomStartDate("");
     setCustomEndDate("");
     setSelectedBankIds([]);
@@ -1259,7 +1295,8 @@ export function ExtratoClient({
 
   // Transações filtradas
   const filteredTransactions = useMemo(() => {
-    const todayStr = "2026-11-08";
+    const todayStr = getLocalTodayIso();
+    const yesterdayStr = getLocalTodayIso(-1);
     const refDate = new Date();
 
     return transactions
@@ -1320,15 +1357,31 @@ export function ExtratoClient({
           const refDay = refDate.getDate();
           const todayDate = new Date(refYear, refMonth, refDay);
 
-          if (periodFilter === "today") {
-            const isToday =
-              txDateStr === todayStr ||
-              (y === refYear && m - 1 === refMonth && d === refDay);
+          if (periodFilter === "invoice") {
+            const isCreditTx = tx.paymentMethod === "credit" || Boolean(tx.creditCardId);
+            if (!isCreditTx) return false;
+
+            const txCardName = (tx.accountOrCard || tx.accountName || "").toLowerCase();
+            const matchedCard =
+              availableCards.find((c) => c.id === tx.creditCardId) ||
+              availableCards.find((c) => {
+                const cName = c.name.toLowerCase();
+                return txCardName && (txCardName.includes(cName) || cName.includes(txCardName));
+              }) ||
+              (selectedCardIds.length === 1
+                ? availableCards.find((c) => c.id === selectedCardIds[0])
+                : undefined) ||
+              availableCards[0];
+
+            const closingDay = matchedCard?.closingDay || 24;
+            const dueDay = matchedCard?.dueDay || 1;
+            const cycle = getBillingCycleByOffset(closingDay, dueDay, invoiceOffset, refDate);
+            if (!doesTransactionBelongToCycle(txDateStr, cycle)) return false;
+          } else if (periodFilter === "today") {
+            const isToday = txDateStr === todayStr;
             if (!isToday) return false;
           } else if (periodFilter === "yesterday") {
-            const yesterdayDate = new Date(refYear, refMonth, refDay - 1);
-            const yParts = yesterdayDate.toISOString().split("T")[0];
-            const isYesterday = txDateStr === "2026-11-07" || txDateStr === yParts;
+            const isYesterday = txDateStr === yesterdayStr;
             if (!isYesterday) return false;
           } else if (periodFilter === "last7days") {
             const past7 = new Date(refYear, refMonth, refDay - 7);
@@ -1384,10 +1437,8 @@ export function ExtratoClient({
             if (!c) return false;
             const cName = c.name.toLowerCase();
             return (
-              txCardName.includes(cName) ||
-              cName.includes(txCardName) ||
               txCardId === c.id ||
-              tx.paymentMethod === "credit"
+              (txCardName && (txCardName.includes(cName) || cName.includes(txCardName)))
             );
           });
           if (!matchesCard) return false;
@@ -1454,6 +1505,7 @@ export function ExtratoClient({
     activeFilter,
     searchQuery,
     periodFilter,
+    invoiceOffset,
     customStartDate,
     customEndDate,
     selectedBankIds,
@@ -1463,6 +1515,50 @@ export function ExtratoClient({
     showHidden,
     availableCards,
   ]);
+
+  const activeInvoiceSummary = useMemo(() => {
+    if (periodFilter !== "invoice") return null;
+
+    const selectedCards = availableCards.filter((c) => selectedCardIds.includes(c.id));
+    const singleCard = selectedCards.length === 1 ? selectedCards[0] : null;
+    const referenceCard =
+      singleCard ||
+      selectedCards[0] ||
+      availableCards.find((c) => c.isDefault) ||
+      availableCards[0];
+
+    const closingDay = referenceCard?.closingDay || 24;
+    const dueDay = referenceCard?.dueDay || 1;
+    const cycle = getBillingCycleByOffset(closingDay, dueDay, invoiceOffset, new Date());
+
+    const expenses = filteredTransactions
+      .filter((t) => t.type === "expense")
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    const credits = filteredTransactions
+      .filter((t) => t.type === "income")
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    const total = Math.max(0, Number((expenses - credits).toFixed(2)));
+
+    const limit = singleCard?.creditLimit || 0;
+    const limitPct = limit > 0 ? Math.min(100, Math.round((total / limit) * 100)) : 0;
+
+    return {
+      cardName: singleCard
+        ? singleCard.name
+        : selectedCards.length > 1
+        ? `${selectedCards.length} cartões selecionados`
+        : "Todos os cartões",
+      isSingleCard: Boolean(singleCard),
+      isMultiCardDifferentClosing:
+        selectedCards.length > 1 &&
+        new Set(selectedCards.map((c) => c.closingDay)).size > 1,
+      cycle,
+      total,
+      limit,
+      limitPct,
+      txCount: filteredTransactions.length,
+    };
+  }, [periodFilter, availableCards, selectedCardIds, invoiceOffset, filteredTransactions]);
 
   // Cadastrar nova pessoa inline no banco e já selecionar
   const handleQuickRegisterPerson = async (e: React.FormEvent) => {
@@ -1525,7 +1621,9 @@ export function ExtratoClient({
   // Agrupamento por data (Hoje, Ontem, e por dia/mês específico para cada parcela)
   const groupedTransactions = useMemo(() => {
     const groups: { [key: string]: ExtratoTransaction[] } = {};
-    const todayStr = "2026-11-08";
+    const todayStr = getLocalTodayIso();
+    const yesterdayStr = getLocalTodayIso(-1);
+    const currentYear = String(new Date().getFullYear());
 
     filteredTransactions.forEach((tx) => {
       const rawDate = tx.transactionDate || "";
@@ -1534,7 +1632,7 @@ export function ExtratoClient({
       let groupKey = "Hoje";
       if (txDate === todayStr) {
         groupKey = "Hoje";
-      } else if (txDate === "2026-11-07") {
+      } else if (txDate === yesterdayStr) {
         groupKey = "Ontem";
       } else if (txDate) {
         const parts = txDate.split("-");
@@ -1546,7 +1644,7 @@ export function ExtratoClient({
             "jul", "ago", "set", "out", "nov", "dez"
           ];
           const year = parts[0];
-          if (year !== "2026") {
+          if (year !== currentYear) {
             groupKey = `${day} de ${monthsShort[m]} de ${year}`;
           } else {
             groupKey = `${day} de ${monthsShort[m]}`;
@@ -1816,7 +1914,7 @@ export function ExtratoClient({
           <button
             type="button"
             onClick={() => {
-              setNewDate("2026-11-08");
+              setNewDate(getLocalTodayIso());
               setCentsAmount(0);
               setNewTitle("");
               setIsNewTxModalOpen(true);
@@ -1872,6 +1970,22 @@ export function ExtratoClient({
             <span>Filtros{isAnyFilterActive ? ` (${appliedFilterCount})` : ""}</span>
           </button>
 
+          {/* Atalho rápido: Fatura do Cartão */}
+          {availableCards.length > 0 && (
+            <button
+              type="button"
+              onClick={handleToggleInvoiceQuickMode}
+              className={`shrink-0 px-4 py-2 rounded-full border text-sm font-medium flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer ${
+                periodFilter === "invoice"
+                  ? "bg-[#ccff00] text-black border-[#ccff00] shadow-md font-semibold"
+                  : "bg-[#111114] border-white/10 text-zinc-300 hover:text-white hover:border-white/20"
+              }`}
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Faturas</span>
+            </button>
+          )}
+
           {/* Entradas */}
           <button
             type="button"
@@ -1914,6 +2028,147 @@ export function ExtratoClient({
             <span>Pagamentos</span>
           </button>
         </div>
+
+        {/* Banner de Ciclo da Fatura (quando periodFilter === "invoice") */}
+        {activeInvoiceSummary && (
+          <div className="mb-4 rounded-[24px] bg-[#111115] border border-white/[0.08] p-4 flex flex-col gap-3 shadow-lg">
+            {/* Seletor rápido de cartões (quando houver mais de 1 cartão) */}
+            {availableCards.length > 1 && (
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCardIds([])}
+                  className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                    selectedCardIds.length === 0
+                      ? "bg-white text-black border-white"
+                      : "bg-white/[0.04] text-zinc-400 border-white/10 hover:text-white"
+                  }`}
+                >
+                  Todos
+                </button>
+                {availableCards.map((card) => {
+                  const isCardSelected = selectedCardIds.includes(card.id);
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCardIds([card.id]);
+                      }}
+                      className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer flex items-center gap-1.5 ${
+                        isCardSelected && selectedCardIds.length === 1
+                          ? "bg-white text-black border-white"
+                          : "bg-white/[0.04] text-zinc-300 border-white/10 hover:text-white"
+                      }`}
+                    >
+                      <span>{card.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Cabeçalho do Card da Fatura */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs font-semibold text-zinc-300 truncate">
+                  {activeInvoiceSummary.cardName}
+                </span>
+                <span
+                  className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    activeInvoiceSummary.cycle.status === "open"
+                      ? "bg-[#ccff00]/15 text-[#ccff00] border border-[#ccff00]/30"
+                      : activeInvoiceSummary.cycle.status === "closed"
+                      ? "bg-amber-400/15 text-amber-300 border border-amber-400/30"
+                      : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+                  }`}
+                >
+                  {activeInvoiceSummary.cycle.status === "open"
+                    ? "Fatura aberta"
+                    : activeInvoiceSummary.cycle.status === "closed"
+                    ? "Fechada"
+                    : "Futura"}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPeriodFilter("currentMonth");
+                  setInvoiceOffset(0);
+                }}
+                className="shrink-0 text-[11px] font-medium text-zinc-400 hover:text-white underline underline-offset-2 cursor-pointer"
+              >
+                Ver por mês
+              </button>
+            </div>
+
+            {/* Navegador de Ciclo (< Fatura de Novembro >) */}
+            <div className="flex items-center justify-between gap-2 bg-white/[0.03] border border-white/[0.06] rounded-2xl px-2 py-1.5">
+              <button
+                type="button"
+                onClick={() => setInvoiceOffset((prev) => prev - 1)}
+                aria-label="Fatura anterior"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/[0.08] active:scale-95 transition cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <div className="flex flex-col items-center text-center min-w-0">
+                <span className="text-sm font-bold text-white tracking-tight">
+                  {activeInvoiceSummary.cycle.label}
+                </span>
+                <span className="text-[11px] text-zinc-400">
+                  {activeInvoiceSummary.isMultiCardDifferentClosing
+                    ? "Cada cartão no seu ciclo de fechamento"
+                    : `${activeInvoiceSummary.cycle.rangeLabel} • Fecha ${formatDayMonthNumeric(
+                        activeInvoiceSummary.cycle.closingDate
+                      )} • Vence ${formatDayMonthNumeric(activeInvoiceSummary.cycle.dueDate)}`}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setInvoiceOffset((prev) => prev + 1)}
+                aria-label="Próxima fatura"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/[0.08] active:scale-95 transition cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Total da Fatura e Barra de Limite */}
+            <div className="flex items-end justify-between gap-3 pt-0.5">
+              <div>
+                <p className="text-[11px] text-zinc-400 font-medium">
+                  Total da fatura ({activeInvoiceSummary.txCount}{" "}
+                  {activeInvoiceSummary.txCount === 1 ? "lançamento" : "lançamentos"})
+                </p>
+                <p
+                  className={`text-xl sm:text-2xl font-extrabold text-white tracking-tight mt-0.5 ${
+                    isPrivacyHidden ? "balance-blur" : ""
+                  }`}
+                >
+                  R$ {formatCurrency(activeInvoiceSummary.total)}
+                </p>
+              </div>
+
+              {activeInvoiceSummary.isSingleCard && activeInvoiceSummary.limit > 0 && (
+                <div className="text-right min-w-[110px]">
+                  <span className="text-[11px] text-zinc-400 block">
+                    {activeInvoiceSummary.limitPct}% do limite
+                  </span>
+                  <div className="w-full h-1.5 rounded-full bg-white/[0.08] overflow-hidden mt-1">
+                    <div
+                      className="h-full rounded-full bg-[#ccff00] transition-all duration-300"
+                      style={{ width: `${activeInvoiceSummary.limitPct}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Área Central: Lista de Transações ou Estado Vazio IDÊNTICO à imagem */}
         {filteredTransactions.length === 0 ? (
@@ -3168,9 +3423,14 @@ export function ExtratoClient({
                           <div className="w-8 h-8 rounded-full bg-[#1b1c22] border border-white/10 flex items-center justify-center text-zinc-300 shrink-0">
                             <CreditCard className="w-4 h-4" />
                           </div>
-                          <span className="text-sm sm:text-[15px] font-medium text-zinc-200 group-hover:text-white transition">
-                            {card.name}
-                          </span>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-sm sm:text-[15px] font-medium text-zinc-200 group-hover:text-white transition">
+                              {card.name}
+                            </span>
+                            <span className="text-[11px] text-zinc-500">
+                              Fecha dia {card.closingDay} • Vence dia {card.dueDay}
+                            </span>
+                          </div>
                         </div>
 
                         <div
@@ -3367,7 +3627,7 @@ export function ExtratoClient({
           setEditTxInstallmentTotal(instTotal);
           setEditTxApplyToAll(true);
           const rawDate = selectedTx.transactionDate || "";
-          setEditTxDate(rawDate.includes("T") ? rawDate.split("T")[0] : rawDate || "2026-11-08");
+          setEditTxDate(rawDate.includes("T") ? rawDate.split("T")[0] : rawDate || getLocalTodayIso());
           setEditTxTime(rawDate.includes("T") ? rawDate.split("T")[1]?.slice(0, 5) || "12:00" : "12:00");
           const pm = selectedTx.paymentMethod || "credit";
           setEditTxPaymentMethod(pm);
@@ -3430,10 +3690,41 @@ export function ExtratoClient({
 
         const handleDeleteTx = async () => {
           const txId = selectedTx.id;
-          setTransactions((prev) => prev.filter((t) => t.id !== txId));
-          handleCloseTransactionDetail();
-          setIsConfirmDeleteOpen(false);
-          await deleteTransactionAction(txId);
+          const isInstallment = (selectedTx.installmentTotal || 1) > 1;
+          const scopeToUse: "single" | "all" = isInstallment ? deleteScope : "single";
+          const groupId = selectedTx.installmentGroupId;
+
+          setIsDeletingTx(true);
+          try {
+            const res = await deleteTransactionAction(txId, scopeToUse);
+            if (!res?.success) {
+              showTxToast("error", res?.error || "Não foi possível excluir a transação.");
+              return;
+            }
+
+            setTransactions((prev) => {
+              if (scopeToUse === "all" && groupId) {
+                return prev.filter((t) => t.installmentGroupId !== groupId);
+              }
+              return prev.filter((t) => t.id !== txId);
+            });
+            setIsConfirmDeleteOpen(false);
+            handleCloseTransactionDetail();
+            showTxToast(
+              "success",
+              scopeToUse === "all" && isInstallment
+                ? "Todas as parcelas foram excluídas!"
+                : "Transação excluída com sucesso!"
+            );
+            router.refresh();
+          } catch (err) {
+            showTxToast(
+              "error",
+              err instanceof Error ? err.message : "Erro inesperado ao excluir transação."
+            );
+          } finally {
+            setIsDeletingTx(false);
+          }
         };
 
         const handleToggleHideSelectedTx = () => {
@@ -3463,7 +3754,10 @@ export function ExtratoClient({
               <div className="flex items-center gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setIsConfirmDeleteOpen(true)}
+                  onClick={() => {
+                    setDeleteScope("single");
+                    setIsConfirmDeleteOpen(true);
+                  }}
                   aria-label="Excluir transação"
                   title="Excluir transação"
                   className="w-11 h-11 rounded-full liquid-glass-btn-danger flex items-center justify-center cursor-pointer shadow-md"
@@ -3830,20 +4124,59 @@ export function ExtratoClient({
                   <p className="text-xs text-zinc-300 bg-black/60 p-3.5 rounded-2xl border border-white/5">
                     &ldquo;{selectedTx.title}&rdquo; no valor de R$ {formatCurrency(selectedTx.amount)}
                   </p>
+                  {hasInstallments && (
+                    <div className="flex flex-col gap-2">
+                      <span className="text-[11px] font-medium text-zinc-400">
+                        O que você deseja excluir?
+                      </span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDeleteScope("single")}
+                          className={`p-2.5 rounded-2xl text-xs font-semibold border transition text-left cursor-pointer ${
+                            deleteScope === "single"
+                              ? "bg-white text-black border-white font-bold"
+                              : "bg-black/40 border-white/10 text-zinc-300 hover:border-white/20"
+                          }`}
+                        >
+                          <div className="truncate">Só esta parcela</div>
+                          <div className={`text-[10px] mt-0.5 ${deleteScope === "single" ? "text-zinc-600" : "text-zinc-500"}`}>
+                            Parcela {currentInst} de {totalInst}
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteScope("all")}
+                          className={`p-2.5 rounded-2xl text-xs font-semibold border transition text-left cursor-pointer ${
+                            deleteScope === "all"
+                              ? "bg-rose-500 text-white border-rose-400 font-bold"
+                              : "bg-black/40 border-white/10 text-zinc-300 hover:border-white/20"
+                          }`}
+                        >
+                          <div className="truncate">Todas as parcelas</div>
+                          <div className={`text-[10px] mt-0.5 ${deleteScope === "all" ? "text-rose-100" : "text-zinc-500"}`}>
+                            Grupo ({totalInst}x)
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2.5 pt-2">
                     <button
                       type="button"
+                      disabled={isDeletingTx}
                       onClick={() => setIsConfirmDeleteOpen(false)}
-                      className="flex-1 py-3 rounded-full liquid-glass-btn text-sm font-bold text-zinc-300 hover:text-white transition cursor-pointer"
+                      className="flex-1 py-3 rounded-full liquid-glass-btn text-sm font-bold text-zinc-300 hover:text-white transition cursor-pointer disabled:opacity-50"
                     >
                       Cancelar
                     </button>
                     <button
                       type="button"
+                      disabled={isDeletingTx}
                       onClick={handleDeleteTx}
-                      className="flex-1 py-3 rounded-full liquid-glass-btn-danger text-sm font-bold transition cursor-pointer shadow-lg"
+                      className="flex-1 py-3 rounded-full liquid-glass-btn-danger text-sm font-bold transition cursor-pointer shadow-lg disabled:opacity-50"
                     >
-                      Excluir
+                      {isDeletingTx ? "Excluindo..." : "Excluir"}
                     </button>
                   </div>
                 </div>
@@ -3857,7 +4190,7 @@ export function ExtratoClient({
               const origTotalVal = selectedTx.originalTotalAmount || selectedTx.amount * origInstTotal;
               const origTotalCents = Math.round(origTotalVal * 100);
               const origRawDate = selectedTx.transactionDate || "";
-              const origDate = origRawDate.includes("T") ? origRawDate.split("T")[0] : origRawDate || "2026-11-08";
+              const origDate = origRawDate.includes("T") ? origRawDate.split("T")[0] : origRawDate || getLocalTodayIso();
               const origTime = origRawDate.includes("T") ? origRawDate.split("T")[1]?.slice(0, 5) || "12:00" : "12:00";
               const origPm = selectedTx.paymentMethod || "credit";
               const editFilteredSources = getFilteredSourcesForMethod(editTxPaymentMethod);

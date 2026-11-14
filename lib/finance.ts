@@ -17,6 +17,7 @@ import {
 } from "@/types/finance";
 import { addMonths } from "@/lib/dateUtils";
 import { detectBrand } from "@/lib/brands";
+import { doesTransactionBelongToCycle, getBillingCycleByOffset } from "@/lib/billingCycle";
 
 export type { DashboardData, ExtratoData, ExtratoTransaction, Person, InstallmentScheduleItem, TransactionSplit };
 export { addMonths };
@@ -155,10 +156,17 @@ export async function getDashboardData(): Promise<DashboardData> {
   const currentCompetencePrefix = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, "0")}`;
 
   const creditCards: CreditCardSummary[] = rawCards.map((c) => {
+    const closingDayNum = c.closing_day || 24;
+    const dueDayNum = c.due_day || 1;
+    const currentCycle = getBillingCycleByOffset(closingDayNum, dueDayNum, 0, now);
+
     const cardTxs = rawTransactions.filter((t) => {
       if (t.credit_card_id !== c.id) return false;
+      if (t.transaction_date) {
+        return doesTransactionBelongToCycle(t.transaction_date, currentCycle);
+      }
       if (t.competence_date) {
-        return t.competence_date.startsWith(currentCompetencePrefix);
+        return t.competence_date.startsWith(currentCycle.cycleKey);
       }
       return t.status === "paid";
     });
@@ -174,10 +182,10 @@ export async function getDashboardData(): Promise<DashboardData> {
     const limit = Number(c.credit_limit || 6000.0);
     const percentage = limit > 0 ? Math.min(100, Math.round((spent / limit) * 100)) : 0;
 
-    let closingDays = (c.closing_day || 24) - currentDay;
-    if (closingDays < 0) {
-      closingDays += daysInMonth;
-    }
+    const todayMidnight = new Date(currentYear, currentMonthIndex, currentDay).getTime();
+    const [cy, cm, cd] = currentCycle.closingDate.split("-").map(Number);
+    const closingMidnight = new Date(cy, (cm || 1) - 1, cd || 1).getTime();
+    const closingDays = Math.max(0, Math.round((closingMidnight - todayMidnight) / (1000 * 60 * 60 * 24)));
 
     return {
       id: c.id,
@@ -673,6 +681,11 @@ export async function getExtratoData(): Promise<ExtratoData> {
       ? rawCards.map((c) => ({
           id: c.id,
           name: c.name,
+          closingDay: c.closing_day || 24,
+          dueDay: c.due_day || 1,
+          creditLimit: Number(c.credit_limit || 0),
+          color: c.color || undefined,
+          isDefault: Boolean(c.is_default),
         }))
       : [];
 
@@ -909,9 +922,19 @@ export async function getExtratoData(): Promise<ExtratoData> {
       const baseDate = t.transaction_date;
       const cleanTitle = t.description.replace(/\(Parcela \d+\/\d+\)/i, "").trim();
 
+      const excludedParcels = new Set<number>(
+        Array.isArray(t.tags)
+          ? t.tags
+              .filter((tg: string) => typeof tg === "string" && tg.startsWith("#excl_parc_"))
+              .map((tg: string) => parseInt(tg.replace("#excl_parc_", ""), 10))
+              .filter((n: number) => !Number.isNaN(n))
+          : []
+      );
+
       const schedule: InstallmentScheduleItem[] = [];
       for (let i = 1; i <= totalInst; i++) {
-        const iDate = addMonths(baseDate, i - 1);
+        if (excludedParcels.has(i)) continue;
+        const iDate = addMonths(baseDate, i - currentInst);
         const parts = iDate.split("-");
         const formatted = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : iDate;
         schedule.push({
@@ -920,12 +943,13 @@ export async function getExtratoData(): Promise<ExtratoData> {
           date: iDate,
           formattedDate: formatted,
           amount: parcelAmount,
-          status: iDate <= today ? "paid" : i === 1 ? "current" : "pending",
+          status: iDate <= today ? "paid" : i === currentInst ? "current" : "pending",
         });
       }
 
       for (let i = 1; i <= totalInst; i++) {
-        const instDate = addMonths(baseDate, i - 1);
+        if (excludedParcels.has(i)) continue;
+        const instDate = addMonths(baseDate, i - currentInst);
         const parts = instDate.split("-");
         const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}` : instDate;
         const isPaid = instDate <= today || i <= currentInst;
@@ -1309,15 +1333,125 @@ export async function createTransaction(payload: {
   }
 }
 
-export async function deleteTransaction(transactionId: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteTransaction(
+  transactionId: string,
+  scope: "single" | "all" = "single"
+): Promise<{ success: boolean; error?: string }> {
   try {
-    const supabase = createAdminClient();
-    try {
-      await supabase.from("splits").delete().eq("transaction_id", transactionId);
-    } catch {
-      // Ignora erro de split se tabela não existir
+    const parcMatch = transactionId.match(/-parc-(\d+)$/);
+    const virtualParcelNumber = parcMatch ? parseInt(parcMatch[1], 10) : null;
+    const realTxId = transactionId.replace(/-parc-\d+$/, "");
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(realTxId)) {
+      return {
+        success: false,
+        error: "Transação local/demonstração não pode ser excluída do banco.",
+      };
     }
-    const { error } = await supabase.from("transactions").delete().eq("id", transactionId);
+
+    const supabase = createAdminClient();
+    const { data: existingTx, error: fetchErr } = await supabase
+      .from("transactions")
+      .select("id, installment_group_id, installment_number, installment_total, tags")
+      .eq("id", realTxId)
+      .single();
+
+    if (fetchErr || !existingTx) {
+      return { success: false, error: fetchErr?.message || "Transação não encontrada." };
+    }
+
+    const totalInst = existingTx.installment_total || 1;
+    const deletedInstNum = virtualParcelNumber ?? (existingTx.installment_number || 1);
+
+    if (scope === "all" && existingTx.installment_group_id) {
+      const { data: groupRows } = await supabase
+        .from("transactions")
+        .select("id")
+        .eq("installment_group_id", existingTx.installment_group_id);
+      const ids = (groupRows || []).map((r) => r.id);
+      if (ids.length > 0) {
+        await supabase.from("splits").delete().in("transaction_id", ids);
+      }
+      const { error } = await supabase
+        .from("transactions")
+        .delete()
+        .eq("installment_group_id", existingTx.installment_group_id);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+
+    if (scope === "single" && totalInst > 1) {
+      if (existingTx.installment_group_id) {
+        const { data: groupRows } = await supabase
+          .from("transactions")
+          .select("id, tags")
+          .eq("installment_group_id", existingTx.installment_group_id);
+        const rows = groupRows || [];
+
+        // Se é uma parcela virtual (-parc-N) ou só resta 1 linha no banco para o grupo todo,
+        // marca a parcela como excluída via tag para não ser recriada na expansão.
+        if (virtualParcelNumber !== null || rows.length <= 1) {
+          const currentTags: string[] = Array.isArray(existingTx.tags) ? [...existingTx.tags] : [];
+          const exclTag = `#excl_parc_${deletedInstNum}`;
+          if (!currentTags.includes(exclTag)) {
+            currentTags.push(exclTag);
+          }
+          const excludedCount = currentTags.filter((tg) => tg.startsWith("#excl_parc_")).length;
+          if (excludedCount >= totalInst) {
+            await supabase.from("splits").delete().eq("transaction_id", realTxId);
+            const { error } = await supabase.from("transactions").delete().eq("id", realTxId);
+            if (error) return { success: false, error: error.message };
+            return { success: true };
+          }
+          const { error } = await supabase
+            .from("transactions")
+            .update({ tags: currentTags })
+            .eq("id", realTxId);
+          if (error) return { success: false, error: error.message };
+          return { success: true };
+        }
+
+        // Múltiplas linhas no banco: apaga esta parcela e registra a exclusão nas restantes
+        // para que, caso sobre apenas 1 linha, a parcela excluída não volte a ser expandida.
+        await supabase.from("splits").delete().eq("transaction_id", realTxId);
+        const { error: delErr } = await supabase.from("transactions").delete().eq("id", realTxId);
+        if (delErr) return { success: false, error: delErr.message };
+
+        const exclTag = `#excl_parc_${deletedInstNum}`;
+        for (const rem of rows) {
+          if (rem.id === realTxId) continue;
+          const remTags: string[] = Array.isArray(rem.tags) ? [...rem.tags] : [];
+          if (!remTags.includes(exclTag)) {
+            remTags.push(exclTag);
+            await supabase.from("transactions").update({ tags: remTags }).eq("id", rem.id);
+          }
+        }
+        return { success: true };
+      }
+
+      // Parcelada sem installment_group_id (linha única expandida)
+      const currentTags: string[] = Array.isArray(existingTx.tags) ? [...existingTx.tags] : [];
+      const exclTag = `#excl_parc_${deletedInstNum}`;
+      if (!currentTags.includes(exclTag)) {
+        currentTags.push(exclTag);
+      }
+      const excludedCount = currentTags.filter((tg) => tg.startsWith("#excl_parc_")).length;
+      if (excludedCount >= totalInst) {
+        await supabase.from("splits").delete().eq("transaction_id", realTxId);
+        const { error } = await supabase.from("transactions").delete().eq("id", realTxId);
+        if (error) return { success: false, error: error.message };
+        return { success: true };
+      }
+      const { error } = await supabase
+        .from("transactions")
+        .update({ tags: currentTags })
+        .eq("id", realTxId);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+
+    await supabase.from("splits").delete().eq("transaction_id", realTxId);
+    const { error } = await supabase.from("transactions").delete().eq("id", realTxId);
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err: unknown) {

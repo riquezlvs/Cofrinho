@@ -419,7 +419,7 @@ export const fallbackExtratoData: ExtratoData = {
     { id: "acc-nubank", name: "Conta Nubank", type: "checking" },
     { id: "acc-vr", name: "Vale Refeição (VR)", type: "vr" },
   ],
-  creditCards: [{ id: "card-santander", name: "Cartão Santander" }],
+  creditCards: [{ id: "card-santander", name: "Cartão Santander", closingDay: 24, dueDay: 1 }],
   people: [
     { id: "p-1", name: "Mariana", pixKey: "mariana@pix.com" },
     { id: "p-2", name: "Carlos", phone: "(11) 98765-4321" },

@@ -143,6 +143,7 @@ export interface ExtratoTransaction {
   creditCardId?: string;
   origin?: "open_finance" | "manual";
   isHidden?: boolean;
+  competenceDate?: string;
 }
 
 export interface ExtratoCategory {
@@ -164,6 +165,11 @@ export interface ExtratoAccount {
 export interface ExtratoCreditCard {
   id: string;
   name: string;
+  closingDay: number;
+  dueDay: number;
+  creditLimit?: number;
+  color?: string;
+  isDefault?: boolean;
 }
 
 export interface Person {

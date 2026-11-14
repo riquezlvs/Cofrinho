@@ -18,6 +18,7 @@ import {
 import { Portal } from "@/components/ui/Portal";
 import { TransactionIcon } from "@/components/finance/TransactionIcon";
 import { detectBrand, getGoogleFaviconUrl } from "@/lib/brands";
+import { doesTransactionBelongToCycle, getBillingCycleByOffset } from "@/lib/billingCycle";
 
 export type CardLimitsTab = "faturas" | "parcelas" | "limites";
 
@@ -123,23 +124,30 @@ export function CardLimitsDetailsScreen({
   const totalPercentage =
     totalLimit > 0 ? Math.min(100, Math.round((totalSpent / totalLimit) * 100)) : 0;
 
-  // Transações no cartão de crédito no mês atual
+  // Transações no cartão de crédito no ciclo de fatura selecionado
+  const selectedInvoiceOffset = selectedInvoiceMonthIdx - 3;
+
   const creditTransactions = useMemo(() => {
     const now = new Date();
-    const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-      2,
-      "0"
-    )}`;
     return allTransactions
-      .filter(
-        (tx) =>
-          tx.type === "expense" &&
-          !tx.isHidden &&
-          (tx.paymentMethod === "credit" || Boolean(tx.creditCardId)) &&
-          (tx.dateGroup || tx.transactionDate || "").startsWith(prefix)
-      )
+      .filter((tx) => {
+        if (tx.type !== "expense" || tx.isHidden) return false;
+        if (tx.paymentMethod !== "credit" && !tx.creditCardId) return false;
+        const txCardName = (tx.accountOrCard || tx.accountName || "").toLowerCase();
+        const card =
+          cards.find((c) => c.id && c.id === tx.creditCardId) ||
+          cards.find((c) => txCardName && txCardName.includes(c.cardName.toLowerCase())) ||
+          cards[0];
+        const cycle = getBillingCycleByOffset(
+          card?.closingDay || 24,
+          card?.dueDay || 1,
+          selectedInvoiceOffset,
+          now
+        );
+        return doesTransactionBelongToCycle(tx.dateGroup || tx.transactionDate, cycle);
+      })
       .slice(0, 15);
-  }, [allTransactions]);
+  }, [allTransactions, cards, selectedInvoiceOffset]);
 
   // Parcelamentos ativos agrupados
   const activeInstallmentGroups = useMemo(() => {
@@ -286,41 +294,35 @@ export function CardLimitsDetailsScreen({
 
   // Gráfico de Faturas (3 meses anteriores + mês atual + 2 próximos meses)
   const invoiceHistory = useMemo(() => {
-    const monthShorts = [
-      "JAN",
-      "FEV",
-      "MAR",
-      "ABR",
-      "MAI",
-      "JUN",
-      "JUL",
-      "AGO",
-      "SET",
-      "OUT",
-      "NOV",
-      "DEZ",
-    ];
     const now = new Date();
-    const baseYear = now.getFullYear();
-    const baseMonth = now.getMonth();
 
     const items = [];
     for (let offset = -3; offset <= 2; offset++) {
-      const d = new Date(baseYear, baseMonth + offset, 1);
-      const y = d.getFullYear();
-      const m = d.getMonth();
-      const prefix = `${y}-${String(m + 1).padStart(2, "0")}`;
-      const label =
-        y === baseYear ? monthShorts[m] : `${monthShorts[m]}/${String(y).slice(-2)}`;
+      const refCard = cards[0];
+      const refCycle = getBillingCycleByOffset(
+        refCard?.closingDay || 24,
+        refCard?.dueDay || 1,
+        offset,
+        now
+      );
 
       let amount = allTransactions
-        .filter(
-          (tx) =>
-            tx.type === "expense" &&
-            !tx.isHidden &&
-            (tx.paymentMethod === "credit" || Boolean(tx.creditCardId)) &&
-            (tx.dateGroup || tx.transactionDate || "").startsWith(prefix)
-        )
+        .filter((tx) => {
+          if (tx.type !== "expense" || tx.isHidden) return false;
+          if (tx.paymentMethod !== "credit" && !tx.creditCardId) return false;
+          const txCardName = (tx.accountOrCard || tx.accountName || "").toLowerCase();
+          const card =
+            cards.find((c) => c.id && c.id === tx.creditCardId) ||
+            cards.find((c) => txCardName && txCardName.includes(c.cardName.toLowerCase())) ||
+            refCard;
+          const cycle = getBillingCycleByOffset(
+            card?.closingDay || 24,
+            card?.dueDay || 1,
+            offset,
+            now
+          );
+          return doesTransactionBelongToCycle(tx.dateGroup || tx.transactionDate, cycle);
+        })
         .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
 
       // Para o mês atual, prioriza o total consolidado das faturas caso não haja lançamentos filtrados
@@ -329,8 +331,8 @@ export function CardLimitsDetailsScreen({
       }
 
       items.push({
-        prefix,
-        label,
+        prefix: refCycle.cycleKey,
+        label: refCycle.shortLabel,
         amount: Number(amount.toFixed(2)),
         isCurrent: offset === 0,
       });
@@ -641,11 +643,18 @@ export function CardLimitsDetailsScreen({
                               {card.cardName}
                             </span>
                             <span className="text-xs text-zinc-400">
-                              {viewMode === "calendar"
-                                ? `Fecha em ${card.closingDays} dias • Vence dia ${
-                                    card.dueDay || 1
-                                  }`
-                                : `Fecha em ${card.closingDays} dias`}
+                              {(() => {
+                                const cardCycle = getBillingCycleByOffset(
+                                  card.closingDay || 24,
+                                  card.dueDay || 1,
+                                  selectedInvoiceOffset
+                                );
+                                return viewMode === "calendar"
+                                  ? `${cardCycle.rangeLabel} • Fecha em ${card.closingDays} dias • Vence dia ${
+                                      card.dueDay || 1
+                                    }`
+                                  : `${cardCycle.rangeLabel} • Fecha em ${card.closingDays} dias`;
+                              })()}
                             </span>
                           </div>
                         </div>
@@ -663,7 +672,9 @@ export function CardLimitsDetailsScreen({
                     {creditTransactions.length > 0 && (
                       <div className="pt-2 flex flex-col gap-2.5">
                         <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 px-1">
-                          Lançamentos no crédito este mês
+                          {selectedInvoiceOffset === 0
+                            ? "Lançamentos na fatura atual"
+                            : `Lançamentos na fatura de ${invoiceHistory[selectedInvoiceMonthIdx]?.label || ""}`}
                         </h3>
                         {creditTransactions.map((tx) => (
                           <div

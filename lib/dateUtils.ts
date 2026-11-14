@@ -1,3 +1,14 @@
+export function getLocalTodayIso(offsetDays = 0): string {
+  const d = new Date();
+  if (offsetDays !== 0) {
+    d.setDate(d.getDate() + offsetDays);
+  }
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function addMonths(dateStr: string, months: number): string {
   if (!dateStr) return dateStr;
   const dateOnly = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
@@ -21,8 +32,8 @@ export function addMonths(dateStr: string, months: number): string {
 }
 
 export function formatLongPortugueseDate(dateStr?: string): string {
-  if (!dateStr) return "Domingo, 8 de novembro de 2026";
-  const raw = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
+  const target = dateStr || getLocalTodayIso();
+  const raw = target.includes("T") ? target.split("T")[0] : target;
   const parts = raw.split("-");
   if (parts.length !== 3) return "Hoje";
 
