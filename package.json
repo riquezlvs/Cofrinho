@@ -13,8 +13,10 @@
     "@supabase/supabase-js": "^2.118.0",
     "lucide-react": "^1.70.0",
     "next": "^16.4.6",
+    "pluggy-sdk": "^0.93.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "react-pluggy-connect": "^2.12.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",

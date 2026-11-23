@@ -7,6 +7,7 @@ import { AccountLogo, formatAccountCurrency } from "@/components/finance/Account
 import { TransactionIcon } from "@/components/finance/TransactionIcon";
 import { Portal } from "@/components/ui/Portal";
 import { addAccountAction } from "@/app/actions/accounts";
+import { ConnectBankButton } from "@/components/finance/ConnectBankButton";
 
 interface AccountsDetailsScreenProps {
   isOpen: boolean;
@@ -239,6 +240,9 @@ export function AccountsDetailsScreen({
             >
               Adicionar conta
             </button>
+
+            {/* Open Finance */}
+            <ConnectBankButton />
 
             {/* Seção Últimos lançamentos */}
             <section className="flex flex-col gap-3 pt-2">

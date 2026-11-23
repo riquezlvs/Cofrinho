@@ -4,7 +4,7 @@ import React, { useState } from "react";
 
 export interface FloatingCofrinhoDockProps {
   activeTab?: "home" | "extrato";
-  onAskCofrinho?: () => void;
+  onAskCofrinho?: (prompt?: string) => void;
   onNavigateHome?: () => void;
   onTransfer?: () => void;
   onOpenMascot?: () => void;
@@ -18,14 +18,14 @@ export function FloatingCofrinhoDock({
   onNavigateHome,
   onTransfer,
   onOpenMascot,
-  placeholder = "Pergunte ao Pierre",
+  placeholder = "Pergunte ao Cofrinho",
   hidden = false,
 }: FloatingCofrinhoDockProps) {
   const [prompt, setPrompt] = useState("");
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && prompt.trim()) {
-      onAskCofrinho?.();
+      onAskCofrinho?.(prompt.trim());
       setPrompt("");
     }
   };

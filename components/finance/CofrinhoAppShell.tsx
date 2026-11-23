@@ -5,6 +5,8 @@ import { DashboardClient } from "@/components/finance/DashboardClient";
 import { ExtratoClient } from "@/components/finance/ExtratoClient";
 import { FluxoDeCaixaClient } from "@/components/finance/FluxoDeCaixaClient";
 import { FloatingCofrinhoDock } from "@/components/finance/FloatingCofrinhoDock";
+import { AiChatDrawer } from "@/components/finance/AiChatDrawer";
+import { GoalsScreen } from "@/components/finance/GoalsScreen";
 import { DashboardData, ExtratoData } from "@/types/finance";
 
 export interface CofrinhoAppShellProps {
@@ -21,6 +23,14 @@ export function CofrinhoAppShell({
   const [currentTab, setCurrentTab] = useState<"home" | "extrato" | "fluxo">(initialTab);
   const [isPrivacyHidden, setIsPrivacyHidden] = useState(false);
   const [isExtratoOverlayOpen, setIsExtratoOverlayOpen] = useState(false);
+  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
+  const [initialChatPrompt, setInitialChatPrompt] = useState<string | undefined>(undefined);
+  const [isGoalsOpen, setIsGoalsOpen] = useState(false);
+
+  const openAiChat = (prompt?: string) => {
+    setInitialChatPrompt(prompt);
+    setIsAiChatOpen(true);
+  };
 
   // Armazena a posição de rolagem de cada aba para manter o contexto do usuário
   const homeScrollRef = useRef(0);
@@ -210,9 +220,28 @@ export function CofrinhoAppShell({
         activeTab={currentTab === "fluxo" ? "home" : currentTab}
         onNavigateHome={() => handleSwitchTab("home")}
         onTransfer={() => handleSwitchTab("extrato")}
-        onAskCofrinho={() => console.log("Pergunte ao Pierre")}
-        onOpenMascot={() => console.log("Mascote Pierre")}
+        onAskCofrinho={(prompt) => openAiChat(prompt)}
+        onOpenMascot={() => openAiChat()}
       />
+
+      {/* Chat IA Cofrinho */}
+      <AiChatDrawer
+        isOpen={isAiChatOpen}
+        onClose={() => {
+          setIsAiChatOpen(false);
+          setInitialChatPrompt(undefined);
+        }}
+        initialPrompt={initialChatPrompt}
+      />
+
+      {/* Modal de Metas */}
+      {isGoalsOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-[460px] max-h-[88vh] overflow-y-auto rounded-3xl bg-[#121216] border border-white/15 p-5 shadow-2xl">
+            <GoalsScreen initialGoals={[]} onClose={() => setIsGoalsOpen(false)} />
+          </div>
+        </div>
+      )}
     </main>
   );
 }

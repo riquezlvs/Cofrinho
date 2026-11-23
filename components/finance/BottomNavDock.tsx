@@ -8,12 +8,14 @@ interface BottomNavDockProps {
   activeTab: NavTab;
   onTabChange: (tab: NavTab) => void;
   onQuickAction?: () => void;
+  onOpenAiChat?: () => void;
 }
 
 export function BottomNavDock({
   activeTab,
   onTabChange,
   onQuickAction,
+  onOpenAiChat,
 }: BottomNavDockProps) {
   return (
     <div
@@ -109,10 +111,10 @@ export function BottomNavDock({
           </svg>
         </button>
 
-        {/* Item 4: Cofrinhos */}
+        {/* Item 4: Cofrinhos / Chat IA */}
         <button
-          aria-label="Cofrinhos"
-          onClick={() => onTabChange("cofrinhos")}
+          aria-label="Cofrinho IA"
+          onClick={onOpenAiChat ?? (() => onTabChange("cofrinhos"))}
           className={`flex flex-col items-center justify-center px-3 py-1 rounded-full transition-colors active:scale-95 cursor-pointer ${
             activeTab === "cofrinhos"
               ? "text-[#ccff00] bg-white/10"
