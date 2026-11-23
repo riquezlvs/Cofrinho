@@ -1,8 +1,8 @@
 import { PluggyClient } from "pluggy-sdk";
 
 export async function POST(req: Request) {
-  const clientId = process.env.CLIENT_ID;
-  const clientSecret = process.env.CLIENT_SECRET;
+  const clientId = process.env.CLIENT_ID || process.env.PLUGGY_CLIENT_ID;
+  const clientSecret = process.env.CLIENT_SECRET || process.env.PLUGGY_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
     return Response.json(

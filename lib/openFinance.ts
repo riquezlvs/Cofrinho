@@ -2,13 +2,15 @@ const PLUGGY_BASE_URL = "https://api.pluggy.ai";
 
 export function isPluggyConfigured(): boolean {
   return Boolean(
-    process.env.PLUGGY_CLIENT_ID && process.env.PLUGGY_CLIENT_SECRET
+    (process.env.PLUGGY_CLIENT_ID || process.env.CLIENT_ID) &&
+      (process.env.PLUGGY_CLIENT_SECRET || process.env.CLIENT_SECRET)
   );
 }
 
 export async function getPluggyApiKey(): Promise<string> {
-  const clientId = process.env.PLUGGY_CLIENT_ID;
-  const clientSecret = process.env.PLUGGY_CLIENT_SECRET;
+  const clientId = process.env.PLUGGY_CLIENT_ID || process.env.CLIENT_ID;
+  const clientSecret =
+    process.env.PLUGGY_CLIENT_SECRET || process.env.CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
     throw new Error(
