@@ -29,6 +29,17 @@ CREATE POLICY "Users can delete their own open finance connections"
   ON public.open_finance_connections FOR DELETE
   USING (auth.uid() = user_id);
 
-ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS external_id TEXT UNIQUE;
-ALTER TABLE public.cards ADD COLUMN IF NOT EXISTS external_id TEXT UNIQUE;
-ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS external_id TEXT UNIQUE;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'accounts') THEN
+    ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS external_id TEXT UNIQUE;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'cards') THEN
+    ALTER TABLE public.cards ADD COLUMN IF NOT EXISTS external_id TEXT UNIQUE;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'transactions') THEN
+    ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS external_id TEXT UNIQUE;
+  END IF;
+END $$;
