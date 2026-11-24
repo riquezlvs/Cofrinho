@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import {
   fetchPluggyAccounts,
   fetchPluggyTransactions,
@@ -27,19 +27,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = await createClient();
+    const supabaseAuth = await createClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await supabaseAuth.auth.getUser();
 
+    const supabase = createAdminClient();
     let userId = user?.id;
     if (!userId) {
-      const { data: fallbackUser } = await supabase
-        .from("users")
-        .select("id")
-        .limit(1)
-        .maybeSingle();
-      userId = fallbackUser?.id;
+      const { data: usersData } = await supabase.auth.admin.listUsers();
+      userId = usersData?.users?.[0]?.id;
     }
 
     if (!userId) {
