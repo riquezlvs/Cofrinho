@@ -1,8 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
-import { PluggyConnect } from "react-pluggy-connect";
+import dynamic from "next/dynamic";
 import { Landmark, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+
+const PluggyConnect = dynamic(
+  () => import("react-pluggy-connect").then((mod) => mod.PluggyConnect),
+  { ssr: false }
+);
 
 interface ConnectBankButtonProps {
   onConnected?: () => void;
@@ -75,13 +80,19 @@ export function ConnectBankButton({ onConnected }: ConnectBankButtonProps) {
                   institutionName: itemData.item.connector?.name,
                 }),
               });
+              const syncData = (await syncRes.json().catch(() => ({}))) as {
+                error?: string;
+              };
               if (syncRes.ok) {
                 setStatus("success");
                 setMessage("Banco conectado e sincronizado com sucesso!");
                 onConnected?.();
               } else {
                 setStatus("error");
-                setMessage("Conectado, mas houve erro ao sincronizar dados.");
+                setMessage(
+                  syncData.error ||
+                    "Conectado, mas houve erro ao sincronizar dados."
+                );
               }
             } catch {
               setStatus("error");
