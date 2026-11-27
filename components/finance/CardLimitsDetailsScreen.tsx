@@ -90,7 +90,10 @@ export function CardLimitsDetailsScreen({
 }: CardLimitsDetailsScreenProps) {
   const [activeTab, setActiveTab] = useState<CardLimitsTab>(initialTab);
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
-  const [selectedInvoiceMonthIdx, setSelectedInvoiceMonthIdx] = useState<number>(3);
+  const [calendarMode, setCalendarMode] = useState<"mensal" | "diaria">("mensal");
+  const [selectedInvoiceMonthIdx, setSelectedInvoiceMonthIdx] = useState<number>(7);
+  const [selectedParcelMonthIdx, setSelectedParcelMonthIdx] = useState<number>(0);
+  const [selectedCardId, setSelectedCardId] = useState<string>("all");
 
   useEffect(() => {
     if (!isOpen) return;
@@ -125,7 +128,7 @@ export function CardLimitsDetailsScreen({
     totalLimit > 0 ? Math.min(100, Math.round((totalSpent / totalLimit) * 100)) : 0;
 
   // Transações no cartão de crédito no ciclo de fatura selecionado
-  const selectedInvoiceOffset = selectedInvoiceMonthIdx - 3;
+  const selectedInvoiceOffset = selectedInvoiceMonthIdx - 7;
 
   const creditTransactions = useMemo(() => {
     const now = new Date();
@@ -138,6 +141,13 @@ export function CardLimitsDetailsScreen({
           cards.find((c) => c.id && c.id === tx.creditCardId) ||
           cards.find((c) => txCardName && txCardName.includes(c.cardName.toLowerCase())) ||
           cards[0];
+        if (
+          selectedCardId !== "all" &&
+          card &&
+          (card.id || card.cardName) !== selectedCardId
+        ) {
+          return false;
+        }
         const cycle = getBillingCycleByOffset(
           card?.closingDay || 24,
           card?.dueDay || 1,
@@ -147,7 +157,7 @@ export function CardLimitsDetailsScreen({
         return doesTransactionBelongToCycle(tx.dateGroup || tx.transactionDate, cycle);
       })
       .slice(0, 15);
-  }, [allTransactions, cards, selectedInvoiceOffset]);
+  }, [allTransactions, cards, selectedCardId, selectedInvoiceOffset]);
 
   // Parcelamentos ativos agrupados
   const activeInstallmentGroups = useMemo(() => {
@@ -292,19 +302,38 @@ export function CardLimitsDetailsScreen({
       };
     }, [allTransactions, activeInstallmentGroups, installments]);
 
-  // Gráfico de Faturas (3 meses anteriores + mês atual + 2 próximos meses)
+  // Gráfico de Faturas (7 meses anteriores + mês atual = 8 meses)
   const invoiceHistory = useMemo(() => {
     const now = new Date();
+    const shortToFullMonth: Record<string, string> = {
+      JAN: "Janeiro",
+      FEV: "Fevereiro",
+      MAR: "Março",
+      ABR: "Abril",
+      MAI: "Maio",
+      JUN: "Junho",
+      JUL: "Julho",
+      AGO: "Agosto",
+      SET: "Setembro",
+      OUT: "Outubro",
+      NOV: "Novembro",
+      DEZ: "Dezembro",
+    };
 
     const items = [];
-    for (let offset = -3; offset <= 2; offset++) {
-      const refCard = cards[0];
+    for (let offset = -7; offset <= 0; offset++) {
+      const refCard =
+        selectedCardId !== "all"
+          ? cards.find((c) => (c.id || c.cardName) === selectedCardId) || cards[0]
+          : cards[0];
       const refCycle = getBillingCycleByOffset(
         refCard?.closingDay || 24,
         refCard?.dueDay || 1,
         offset,
         now
       );
+      const shortUpper = refCycle.shortLabel.toUpperCase();
+      const fullMonthName = shortToFullMonth[shortUpper] || refCycle.shortLabel;
 
       let amount = allTransactions
         .filter((tx) => {
@@ -315,6 +344,13 @@ export function CardLimitsDetailsScreen({
             cards.find((c) => c.id && c.id === tx.creditCardId) ||
             cards.find((c) => txCardName && txCardName.includes(c.cardName.toLowerCase())) ||
             refCard;
+          if (
+            selectedCardId !== "all" &&
+            card &&
+            (card.id || card.cardName) !== selectedCardId
+          ) {
+            return false;
+          }
           const cycle = getBillingCycleByOffset(
             card?.closingDay || 24,
             card?.dueDay || 1,
@@ -326,13 +362,14 @@ export function CardLimitsDetailsScreen({
         .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
 
       // Para o mês atual, prioriza o total consolidado das faturas caso não haja lançamentos filtrados
-      if (offset === 0 && amount === 0 && totalSpent > 0) {
+      if (offset === 0 && amount === 0 && selectedCardId === "all" && totalSpent > 0) {
         amount = totalSpent;
       }
 
       items.push({
         prefix: refCycle.cycleKey,
-        label: refCycle.shortLabel,
+        label: refCycle.shortLabel.toUpperCase(),
+        fullMonthName,
         amount: Number(amount.toFixed(2)),
         isCurrent: offset === 0,
       });
@@ -343,7 +380,7 @@ export function CardLimitsDetailsScreen({
       ...i,
       heightPct: i.amount > 0 ? Math.max(12, Math.round((i.amount / maxAmount) * 100)) : 6,
     }));
-  }, [allTransactions, totalSpent]);
+  }, [allTransactions, cards, selectedCardId, totalSpent]);
 
   if (!isOpen) return null;
 
@@ -410,7 +447,120 @@ export function CardLimitsDetailsScreen({
             </div>
           </header>
 
-          {/* Segmented Control: Faturas | Parcelas | Limites */}
+          {viewMode === "calendar" ? (
+            <div className="flex-1 overflow-y-auto px-4 sm:px-5 pb-10 flex flex-col gap-4">
+              {(() => {
+                const now = new Date();
+                const year = now.getFullYear();
+                const monthIdx = now.getMonth();
+                const monthNames = [
+                  "Janeiro",
+                  "Fevereiro",
+                  "Março",
+                  "Abril",
+                  "Maio",
+                  "Junho",
+                  "Julho",
+                  "Agosto",
+                  "Setembro",
+                  "Outubro",
+                  "Novembro",
+                  "Dezembro",
+                ];
+                const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+                const firstDay = new Date(year, monthIdx, 1).getDay(); // 0=Dom..6=Sab
+                const startOffset = (firstDay + 6) % 7; // Seg=0..Dom=6
+                const monthPrefix = `${year}-${String(monthIdx + 1).padStart(2, "0")}`;
+
+                const dayTxMap = new Map<number, ExtratoTransaction[]>();
+                for (const tx of allTransactions) {
+                  if (tx.type !== "expense" || tx.isHidden) continue;
+                  if (tx.paymentMethod !== "credit" && !tx.creditCardId) continue;
+                  const dateStr = (tx.dateGroup || tx.transactionDate || "").split("T")[0];
+                  if (!dateStr.startsWith(monthPrefix)) continue;
+                  const d = Number(dateStr.split("-")[2]);
+                  if (!Number.isNaN(d)) {
+                    const list = dayTxMap.get(d) || [];
+                    list.push(tx);
+                    dayTxMap.set(d, list);
+                  }
+                }
+
+                return (
+                  <>
+                    <h2 className="text-2xl font-extrabold tracking-tight text-white">
+                      {monthNames[monthIdx]}
+                    </h2>
+
+                    {/* Segmented Control: Mensal | Diária */}
+                    <div className="w-full p-1 rounded-full bg-white/[0.07] border border-white/[0.1] grid grid-cols-2 gap-1">
+                      {(
+                        [
+                          { id: "mensal", label: "Mensal" },
+                          { id: "diaria", label: "Diária" },
+                        ] as const
+                      ).map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setCalendarMode(m.id)}
+                          className={`py-2.5 rounded-full text-sm transition-all cursor-pointer ${
+                            calendarMode === m.id
+                              ? "bg-white text-black font-semibold shadow-sm"
+                              : "text-zinc-300 hover:text-white font-medium"
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Cabeçalho dos dias da semana */}
+                    <div className="grid grid-cols-7 gap-1.5 pt-2 text-center">
+                      {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((wd) => (
+                        <span key={wd} className="text-xs font-medium text-zinc-400">
+                          {wd}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Grade do Calendário */}
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {Array.from({ length: startOffset }).map((_, i) => (
+                        <div key={`empty-${i}`} className="min-h-[68px]" />
+                      ))}
+                      {Array.from({ length: daysInMonth }).map((_, i) => {
+                        const day = i + 1;
+                        const txs = dayTxMap.get(day) || [];
+                        return (
+                          <div
+                            key={day}
+                            className="min-h-[68px] rounded-xl bg-white/[0.06] border border-white/[0.08] p-1.5 flex flex-col justify-between"
+                          >
+                            <span className="text-xs font-medium text-zinc-300">
+                              {day}
+                            </span>
+                            {txs.length > 0 && (
+                              <div className="flex items-center justify-center pb-1">
+                                <TransactionIcon
+                                  title={txs[0].title}
+                                  categoryIcon={txs[0].categoryIcon}
+                                  type="expense"
+                                  size={22}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          ) : (
+            <>
+              {/* Segmented Control: Faturas | Parcelas | Limites */}
           <div className="px-4 sm:px-5 pb-4 shrink-0">
             <div className="w-full p-1 rounded-full bg-white/[0.07] border border-white/[0.1] grid grid-cols-3 gap-1">
               {(
@@ -510,11 +660,7 @@ export function CardLimitsDetailsScreen({
                                     {card.cardName}
                                   </span>
                                   <span className="text-xs text-zinc-400">
-                                    {viewMode === "calendar"
-                                      ? `Fecha dia ${card.closingDay || 24} • Vence dia ${
-                                          card.dueDay || 1
-                                        }`
-                                      : `${pct}% do limite usado`}
+                                    {pct}% do limite usado
                                   </span>
                                 </div>
                               </div>
@@ -555,37 +701,60 @@ export function CardLimitsDetailsScreen({
               </>
             )}
 
-            {activeTab === "faturas" && (
-              <div className="flex flex-col gap-5 pt-1">
-                {/* Resumo + Gráfico de Faturas */}
-                <div className="rounded-[24px] bg-white/[0.04] border border-white/[0.08] p-4 flex flex-col gap-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-xs font-medium text-zinc-400">
-                        {invoiceHistory[selectedInvoiceMonthIdx]?.isCurrent
-                          ? "Fatura atual"
-                          : `Fatura de ${invoiceHistory[selectedInvoiceMonthIdx]?.label || ""}`}
-                      </p>
-                      <p
-                        className={`text-2xl sm:text-3xl font-extrabold tracking-tight text-white mt-0.5 ${
-                          isPrivacyHidden ? "balance-blur" : ""
-                        }`}
-                      >
-                        R${" "}
-                        {formatCurrency(
-                          invoiceHistory[selectedInvoiceMonthIdx]?.amount ?? totalSpent
-                        )}
-                      </p>
-                    </div>
-                    <span className="px-2.5 py-1 rounded-full bg-white/[0.08] text-[11px] font-semibold text-zinc-300">
-                      {cards.length} {cards.length === 1 ? "cartão" : "cartões"}
-                    </span>
+            {activeTab === "faturas" && (() => {
+              const selectedMonthItem = invoiceHistory[selectedInvoiceMonthIdx];
+              const filteredCards =
+                selectedCardId === "all"
+                  ? cards
+                  : cards.filter((c) => (c.id || c.cardName) === selectedCardId);
+              const selectedCardObj = cards.find(
+                (c) => (c.id || c.cardName) === selectedCardId
+              );
+              const handleCycleCardFilter = () => {
+                if (cards.length === 0) return;
+                if (selectedCardId === "all") {
+                  setSelectedCardId(cards[0].id || cards[0].cardName);
+                } else {
+                  const currentIdx = cards.findIndex(
+                    (c) => (c.id || c.cardName) === selectedCardId
+                  );
+                  if (currentIdx === -1 || currentIdx === cards.length - 1) {
+                    setSelectedCardId("all");
+                  } else {
+                    setSelectedCardId(
+                      cards[currentIdx + 1].id || cards[currentIdx + 1].cardName
+                    );
+                  }
+                }
+              };
+
+              return (
+                <div className="flex flex-col gap-6 pt-1">
+                  {/* Resumo limpo sem card */}
+                  <div>
+                    <p className="text-sm font-medium text-zinc-400">
+                      Total em faturas em {selectedMonthItem?.fullMonthName || "Novembro"}
+                    </p>
+                    <p
+                      className={`text-3xl font-extrabold tracking-tight text-white mt-0.5 ${
+                        isPrivacyHidden ? "balance-blur" : ""
+                      }`}
+                    >
+                      R${" "}
+                      {formatCurrency(
+                        selectedMonthItem?.amount ?? totalSpent
+                      )}
+                    </p>
                   </div>
 
-                  {/* Barras dos últimos e próximos meses */}
-                  <div className="grid grid-cols-6 gap-2 items-end h-28 pt-2">
+                  {/* Linha do tempo de 8 meses: círculos tracejados que crescem para cima como gráfico */}
+                  <div className="grid grid-cols-8 gap-1.5 py-4 items-end h-36">
                     {invoiceHistory.map((item, idx) => {
                       const isSelected = selectedInvoiceMonthIdx === idx;
+                      const hasAmount = item.amount > 0;
+                      const barHeight = hasAmount
+                        ? Math.max(32, Math.round((item.heightPct / 100) * 96))
+                        : 32;
                       return (
                         <button
                           key={item.prefix}
@@ -596,19 +765,29 @@ export function CardLimitsDetailsScreen({
                         >
                           <div className="w-full flex-1 flex items-end justify-center">
                             <div
-                              className={`w-6 sm:w-7 rounded-t-xl rounded-b-md transition-all duration-300 ${
-                                isSelected
-                                  ? "bg-[#ccff00] shadow-[0_0_12px_rgba(204,255,0,0.35)]"
-                                  : item.amount > 0
-                                  ? "bg-white/20 group-hover:bg-white/35"
-                                  : "bg-white/[0.06]"
+                              style={{ height: `${barHeight}px` }}
+                              className={`w-8 rounded-full flex items-end justify-center pb-2.5 transition-all duration-300 ${
+                                hasAmount
+                                  ? isSelected
+                                    ? "border-2 border-[#ccff00] bg-[#ccff00]/20 shadow-[0_0_12px_rgba(204,255,0,0.25)]"
+                                    : "border-2 border-purple-400 bg-purple-500/20 group-hover:bg-purple-500/30"
+                                  : isSelected
+                                  ? "border-2 border-dashed border-zinc-400"
+                                  : "border-2 border-dashed border-zinc-700/80 group-hover:border-zinc-500"
                               }`}
-                              style={{ height: `${item.heightPct}%` }}
-                            />
+                            >
+                              {hasAmount && (
+                                <span
+                                  className={`w-2 h-2 rounded-full ${
+                                    isSelected ? "bg-[#ccff00]" : "bg-purple-400"
+                                  }`}
+                                />
+                              )}
+                            </div>
                           </div>
                           <span
-                            className={`text-[10px] font-semibold ${
-                              isSelected ? "text-white" : "text-zinc-500"
+                            className={`text-[11px] font-medium truncate max-w-full ${
+                              isSelected ? "text-white" : "text-zinc-400"
                             }`}
                           >
                             {item.label}
@@ -617,199 +796,269 @@ export function CardLimitsDetailsScreen({
                       );
                     })}
                   </div>
-                </div>
 
-                {cards.length === 0 ? (
-                  <div className="flex justify-center pt-2">
-                    <div className="inline-flex items-center gap-2.5 px-5 py-3 rounded-2xl bg-white/[0.04] border border-white/[0.08] text-sm text-zinc-400">
-                      <CreditCard className="w-4 h-4 text-zinc-400 shrink-0" />
+                  {/* Pílulas de filtro: Todos os cartões + cada cartão cadastrado */}
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCardId("all")}
+                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold shrink-0 transition-all cursor-pointer active:scale-[0.98] ${
+                        selectedCardId === "all"
+                          ? "bg-white text-black shadow-sm"
+                          : "bg-white/[0.08] border border-white/[0.12] text-zinc-300 hover:text-white"
+                      }`}
+                    >
+                      <CreditCard className="w-4 h-4 shrink-0" />
+                      <span>Todos os cartões</span>
+                    </button>
+
+                    {cards.map((card, idx) => {
+                      const cardKey = card.id || card.cardName;
+                      const isSelected = selectedCardId === cardKey;
+                      return (
+                        <button
+                          key={`${cardKey}-${idx}`}
+                          type="button"
+                          onClick={() => setSelectedCardId(cardKey)}
+                          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold shrink-0 transition-all cursor-pointer active:scale-[0.98] ${
+                            isSelected
+                              ? "bg-white text-black shadow-sm"
+                              : "bg-white/[0.08] border border-white/[0.12] text-zinc-300 hover:text-white"
+                          }`}
+                        >
+                          <CreditCard className="w-4 h-4 shrink-0" />
+                          <span>{card.cardName}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {creditTransactions.length === 0 ? (
+                    <div className="w-full rounded-2xl bg-white/[0.06] border border-white/[0.08] px-4 py-3.5 flex items-center gap-3 text-sm text-zinc-400">
+                      <Clock className="w-4 h-4 text-zinc-400 shrink-0" />
                       <span>Nenhuma fatura encontrada</span>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    {cards.map((card, idx) => (
-                      <div
-                        key={card.id || `${card.cardName}-${idx}`}
-                        className="rounded-[22px] bg-white/[0.04] border border-white/[0.08] p-4 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <CardBankBadge
-                            cardName={card.cardName}
-                            color={card.color}
-                          />
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-sm font-semibold text-white truncate">
-                              {card.cardName}
-                            </span>
-                            <span className="text-xs text-zinc-400">
-                              {(() => {
-                                const cardCycle = getBillingCycleByOffset(
-                                  card.closingDay || 24,
-                                  card.dueDay || 1,
-                                  selectedInvoiceOffset
-                                );
-                                return viewMode === "calendar"
-                                  ? `${cardCycle.rangeLabel} • Fecha em ${card.closingDays} dias • Vence dia ${
-                                      card.dueDay || 1
-                                    }`
-                                  : `${cardCycle.rangeLabel} • Fecha em ${card.closingDays} dias`;
-                              })()}
-                            </span>
-                          </div>
-                        </div>
-
-                        <span
-                          className={`text-sm font-bold text-white shrink-0 ${
-                            isPrivacyHidden ? "balance-blur" : ""
-                          }`}
+                  ) : (
+                    <div className="flex flex-col gap-2.5">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 px-1">
+                        {selectedInvoiceOffset === 0
+                          ? "Lançamentos na fatura atual"
+                          : `Lançamentos na fatura de ${selectedMonthItem?.label || ""}`}
+                      </h3>
+                      {creditTransactions.map((tx) => (
+                        <div
+                          key={tx.id}
+                          className="flex items-center justify-between px-2 py-2 rounded-2xl hover:bg-white/[0.03]"
                         >
-                          R$ {formatCurrency(card.spent)}
-                        </span>
-                      </div>
-                    ))}
-
-                    {creditTransactions.length > 0 && (
-                      <div className="pt-2 flex flex-col gap-2.5">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 px-1">
-                          {selectedInvoiceOffset === 0
-                            ? "Lançamentos na fatura atual"
-                            : `Lançamentos na fatura de ${invoiceHistory[selectedInvoiceMonthIdx]?.label || ""}`}
-                        </h3>
-                        {creditTransactions.map((tx) => (
-                          <div
-                            key={tx.id}
-                            className="flex items-center justify-between px-2 py-2 rounded-2xl hover:bg-white/[0.03]"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <TransactionIcon
-                                title={tx.title}
-                                categoryIcon={tx.categoryIcon}
-                                type="expense"
-                                size={38}
-                              />
-                              <div className="flex flex-col min-w-0">
-                                <span className="text-sm font-medium text-white truncate">
-                                  {tx.title}
-                                </span>
-                                <span className="text-xs text-zinc-400 truncate">
-                                  {tx.accountOrCard || "Cartão"} • {tx.formattedDate}
-                                </span>
-                              </div>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <TransactionIcon
+                              title={tx.title}
+                              categoryIcon={tx.categoryIcon}
+                              type="expense"
+                              size={38}
+                            />
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-sm font-medium text-white truncate">
+                                {tx.title}
+                              </span>
+                              <span className="text-xs text-zinc-400 truncate">
+                                {tx.accountOrCard || "Cartão"} • {tx.formattedDate}
+                              </span>
                             </div>
-                            <span
-                              className={`text-sm font-semibold text-white shrink-0 ml-3 ${
-                                isPrivacyHidden ? "balance-blur" : ""
+                          </div>
+                          <span
+                            className={`text-sm font-semibold text-white shrink-0 ml-3 ${
+                              isPrivacyHidden ? "balance-blur" : ""
+                            }`}
+                          >
+                            R$ {formatCurrency(tx.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {activeTab === "parcelas" && (() => {
+              const selectedParcelMonth = sixMonthForecast[selectedParcelMonthIdx];
+              const maxForecast = Math.max(...sixMonthForecast.map((m) => m.amount), 1);
+
+              return (
+                <div className="flex flex-col gap-6 pt-1">
+                  {/* Resumo Comprometido no Mês */}
+                  <div>
+                    <p className="text-sm font-medium text-zinc-400">
+                      Comprometido em {selectedParcelMonth?.label || currentMonthName}
+                    </p>
+                    <p
+                      className={`text-3xl font-extrabold tracking-tight text-white mt-0.5 ${
+                        isPrivacyHidden ? "balance-blur" : ""
+                      }`}
+                    >
+                      R$ {formatCurrency(selectedParcelMonth?.amount ?? committedThisMonth)}
+                    </p>
+                    <p
+                      className={`text-sm text-zinc-400 mt-0.5 ${
+                        isPrivacyHidden ? "balance-blur" : ""
+                      }`}
+                    >
+                      Restam R$ {formatCurrency(totalRemainingInstallments)}
+                    </p>
+                  </div>
+
+                  {/* Linha de 6 meses: círculos tracejados que crescem para cima e permitem selecionar o mês */}
+                  <div className="grid grid-cols-6 gap-2 py-4 items-end h-36">
+                    {sixMonthForecast.map((m, idx) => {
+                      const isSelected = selectedParcelMonthIdx === idx;
+                      const hasAmount = m.amount > 0;
+                      const heightPct = hasAmount
+                        ? Math.max(12, Math.round((m.amount / maxForecast) * 100))
+                        : 0;
+                      const barHeight = hasAmount
+                        ? Math.max(32, Math.round((heightPct / 100) * 96))
+                        : 32;
+                      return (
+                        <button
+                          key={m.prefix}
+                          type="button"
+                          onClick={() => setSelectedParcelMonthIdx(idx)}
+                          className="flex flex-col items-center justify-end gap-2 h-full cursor-pointer group"
+                          title={`${m.label}: R$ ${formatCurrency(m.amount)}`}
+                        >
+                          <div className="w-full flex-1 flex items-end justify-center">
+                            <div
+                              style={{ height: `${barHeight}px` }}
+                              className={`w-8 rounded-full flex items-end justify-center pb-2.5 transition-all duration-300 ${
+                                hasAmount
+                                  ? isSelected
+                                    ? "border-2 border-[#ccff00] bg-[#ccff00]/20 shadow-[0_0_12px_rgba(204,255,0,0.25)]"
+                                    : "border-2 border-purple-400 bg-purple-500/20 group-hover:bg-purple-500/30"
+                                  : isSelected
+                                  ? "border-2 border-dashed border-zinc-400"
+                                  : "border-2 border-dashed border-zinc-700/80 group-hover:border-zinc-500"
                               }`}
                             >
-                              R$ {formatCurrency(tx.amount)}
-                            </span>
+                              {hasAmount && (
+                                <span
+                                  className={`w-2 h-2 rounded-full ${
+                                    isSelected ? "bg-[#ccff00]" : "bg-purple-400"
+                                  }`}
+                                />
+                              )}
+                            </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                          <span
+                            className={`text-[11px] font-medium truncate max-w-full uppercase ${
+                              isSelected ? "text-white" : "text-zinc-400"
+                            }`}
+                          >
+                            {m.label}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                )}
-              </div>
-            )}
 
-            {activeTab === "parcelas" && (
-              <div className="flex flex-col gap-6 pt-1">
-                {/* Resumo Comprometido no Mês */}
-                <div>
-                  <p className="text-sm font-medium text-zinc-400">
-                    Comprometido em {currentMonthName}
-                  </p>
-                  <p
-                    className={`text-3xl font-extrabold tracking-tight text-white mt-0.5 ${
-                      isPrivacyHidden ? "balance-blur" : ""
-                    }`}
-                  >
-                    R$ {formatCurrency(committedThisMonth)}
-                  </p>
-                  <p
-                    className={`text-sm text-zinc-400 mt-0.5 ${
-                      isPrivacyHidden ? "balance-blur" : ""
-                    }`}
-                  >
-                    Restam R$ {formatCurrency(totalRemainingInstallments)}
-                  </p>
-                </div>
+                  {/* Pílulas de filtro: Todos os cartões + cada cartão cadastrado */}
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCardId("all")}
+                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold shrink-0 transition-all cursor-pointer active:scale-[0.98] ${
+                        selectedCardId === "all"
+                          ? "bg-white text-black shadow-sm"
+                          : "bg-white/[0.08] border border-white/[0.12] text-zinc-300 hover:text-white"
+                      }`}
+                    >
+                      <CreditCard className="w-4 h-4 shrink-0" />
+                      <span>Todos os cartões</span>
+                    </button>
 
-                {/* Linha de 6 meses (Círculos tracejados ou ativos) */}
-                <div className="grid grid-cols-6 gap-2 py-6">
-                  {sixMonthForecast.map((m) => {
-                    const hasAmount = m.amount > 0;
-                    return (
-                      <div
-                        key={m.prefix}
-                        className="flex flex-col items-center gap-2"
-                        title={`${m.label}: R$ ${formatCurrency(m.amount)}`}
-                      >
-                        <div
-                          className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
-                            hasAmount
-                              ? "border-2 border-purple-400 bg-purple-500/20 text-purple-300"
-                              : "border-2 border-dashed border-zinc-700/80"
+                    {cards.map((card, idx) => {
+                      const cardKey = card.id || card.cardName;
+                      const isSelected = selectedCardId === cardKey;
+                      return (
+                        <button
+                          key={`${cardKey}-${idx}`}
+                          type="button"
+                          onClick={() => setSelectedCardId(cardKey)}
+                          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold shrink-0 transition-all cursor-pointer active:scale-[0.98] ${
+                            isSelected
+                              ? "bg-white text-black shadow-sm"
+                              : "bg-white/[0.08] border border-white/[0.12] text-zinc-300 hover:text-white"
                           }`}
                         >
-                          {hasAmount && (
-                            <span className="w-2 h-2 rounded-full bg-purple-400" />
-                          )}
+                          <CreditCard className="w-4 h-4 shrink-0" />
+                          <span>{card.cardName}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Lista de Parcelas do mês selecionado ou Estado Vazio */}
+                  {(() => {
+                    const monthGroups = activeInstallmentGroups.filter(
+                      (grp) => grp.paidParcels + selectedParcelMonthIdx < grp.totalParcels
+                    );
+                    if (monthGroups.length === 0) {
+                      return (
+                        <div className="w-full rounded-2xl bg-white/[0.06] border border-white/[0.08] px-4 py-3.5 flex items-center gap-3 text-sm text-zinc-400">
+                          <Clock className="w-4 h-4 text-zinc-400 shrink-0" />
+                          <span>Nenhuma parcela em andamento</span>
                         </div>
-                        <span className="text-[11px] font-medium text-zinc-400 truncate max-w-full">
-                          {m.label}
-                        </span>
+                      );
+                    }
+                    return (
+                      <div className="flex flex-col gap-2.5">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 px-1">
+                          Parcelas de {selectedParcelMonth?.label || currentMonthName}
+                        </h3>
+                        {monthGroups.map((grp) => {
+                          const parcelNumInMonth = grp.paidParcels + selectedParcelMonthIdx + 1;
+                          return (
+                            <div
+                              key={grp.key}
+                              className="flex items-center justify-between px-2 py-2 rounded-2xl hover:bg-white/[0.03]"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <TransactionIcon
+                                  title={grp.title}
+                                  categoryIcon={grp.categoryIcon}
+                                  type="expense"
+                                  size={38}
+                                />
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-sm font-medium text-white truncate">
+                                    {grp.title}
+                                  </span>
+                                  <span className="text-xs text-zinc-400 truncate">
+                                    Parcela {parcelNumInMonth}/{grp.totalParcels} • Restam{" "}
+                                    {formatCurrency(grp.remainingAmount)}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <span
+                                className={`text-sm font-semibold text-white shrink-0 ml-3 ${
+                                  isPrivacyHidden ? "balance-blur" : ""
+                                }`}
+                              >
+                                R$ {formatCurrency(grp.amountPerParcel)}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     );
-                  })}
+                  })()}
                 </div>
-
-                {/* Lista de Parcelas ou Estado Vazio */}
-                {activeInstallmentGroups.length === 0 ? (
-                  <div className="w-full rounded-2xl bg-white/[0.04] border border-white/[0.08] px-4 py-3.5 flex items-center gap-3 text-sm text-zinc-400">
-                    <Clock className="w-4 h-4 text-zinc-500 shrink-0" />
-                    <span>Nenhuma parcela em andamento</span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    {activeInstallmentGroups.map((grp) => (
-                      <div
-                        key={grp.key}
-                        className="rounded-[22px] bg-white/[0.04] border border-white/[0.08] p-4 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <TransactionIcon
-                            title={grp.title}
-                            categoryIcon={grp.categoryIcon}
-                            type="expense"
-                            size={40}
-                          />
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-sm font-semibold text-white truncate">
-                              {grp.title}
-                            </span>
-                            <span className="text-xs text-zinc-400">
-                              {grp.paidParcels}/{grp.totalParcels} pagas • R${" "}
-                              {formatCurrency(grp.amountPerParcel)}/mês
-                            </span>
-                          </div>
-                        </div>
-
-                        <span
-                          className={`text-sm font-bold text-white shrink-0 ml-3 ${
-                            isPrivacyHidden ? "balance-blur" : ""
-                          }`}
-                        >
-                          R$ {formatCurrency(grp.remainingAmount)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+              );
+            })()}
           </div>
+            </>
+          )}
         </div>
       </div>
     </Portal>
