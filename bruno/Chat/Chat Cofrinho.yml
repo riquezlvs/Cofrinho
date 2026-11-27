@@ -1,0 +1,42 @@
+info:
+  name: Chat Cofrinho
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/chat"
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Como posso economizar R$ 500 este mês?"
+          }
+        ],
+        "context": {
+          "totalBalance": 3500.0,
+          "monthlySpending": 1200.0,
+          "safeToSpend": 800.0,
+          "goals": [
+            {
+              "title": "Reserva de Emergência",
+              "current_amount": 2500.0,
+              "target_amount": 10000.0,
+              "deadline": "2026-12-31"
+            }
+          ]
+        }
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

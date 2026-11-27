@@ -298,11 +298,10 @@ export function MonthlySpendingDetailsScreen({
 
   if (!isOpen) return null;
 
-  const focusedIdx =
+  const focusedPoint =
     activePointIdx !== null && activePointIdx < coords.length
-      ? activePointIdx
-      : Math.max(0, coords.length - 1);
-  const focusedPoint = coords[focusedIdx];
+      ? coords[activePointIdx]
+      : null;
 
   return (
     <Portal>
@@ -426,7 +425,9 @@ export function MonthlySpendingDetailsScreen({
                     fill="transparent"
                     className="cursor-pointer"
                     onMouseEnter={() => setActivePointIdx(idx)}
-                    onClick={() => setActivePointIdx(idx)}
+                    onClick={() =>
+                      setActivePointIdx((prev) => (prev === idx ? null : idx))
+                    }
                   />
                 ))}
               </svg>

@@ -97,17 +97,19 @@ export function BankCardsCarousel({
 
         {activeSlide === 0 ? (
           <>
-            {/* Top Centered Action: + Conectar bancos com botão arredondado e liquid glass */}
-            <div className="w-full flex justify-center pb-3.5 border-b border-white/[0.08]">
-              <button
-                type="button"
-                onClick={onConnectBank}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-full text-xs sm:text-sm font-bold text-white hover:text-white transition-all duration-200 active:scale-95 cursor-pointer liquid-glass-btn shadow-md min-h-[44px]"
-              >
-                <span className="text-base leading-none font-bold text-lime-400">＋</span>
-                <span>Conectar bancos & cartões</span>
-              </button>
-            </div>
+            {/* Top Centered Action: + Conectar bancos (exibido apenas se não houver nenhum cartão cadastrado) */}
+            {(!cards || cards.length === 0) && (
+              <div className="w-full flex justify-center pb-3.5 border-b border-white/[0.08]">
+                <button
+                  type="button"
+                  onClick={onConnectBank}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-full text-xs sm:text-sm font-bold text-white hover:text-white transition-all duration-200 active:scale-95 cursor-pointer liquid-glass-btn shadow-md min-h-[44px]"
+                >
+                  <span className="text-base leading-none font-bold text-lime-400">＋</span>
+                  <span>Conectar bancos & cartões</span>
+                </button>
+              </div>
+            )}
 
             {/* Bottom Info: Total em faturas e valor */}
             <div

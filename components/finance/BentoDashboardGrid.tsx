@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
+import { AccountsOverviewCard } from "@/components/finance/AccountsOverviewCard";
 import {
   CreditCardSummary,
   SubscriptionSummary,
   CategorySpend,
   Person,
   ExtratoTransaction,
+  AccountSummary,
 } from "@/types/finance";
 import { getGoogleFaviconUrl, detectBrand } from "@/lib/brands";
 import { Users } from "lucide-react";
@@ -42,6 +44,9 @@ interface BentoDashboardGridProps {
   };
   onWidgetClick?: (widgetName: string) => void;
   onAddWidgets?: () => void;
+  totalAccountsBalance?: number;
+  accounts?: AccountSummary[];
+  onOpenAccountsDetails?: () => void;
 }
 
 function SubscriptionLogo({
@@ -159,6 +164,9 @@ export function BentoDashboardGrid({
   },
   onWidgetClick,
   onAddWidgets,
+  totalAccountsBalance = 0,
+  accounts = [],
+  onOpenAccountsDetails,
 }: BentoDashboardGridProps) {
   const formatCurrency = (val: number) =>
     val.toLocaleString("pt-BR", {
@@ -174,34 +182,13 @@ export function BentoDashboardGrid({
     <section className="w-full flex flex-col gap-4">
       {/* 2-Column Bento Grid */}
       <div className="grid grid-cols-2 gap-3.5">
-        {/* Widget 1: Transações / Gastos Recentes por Categoria (Top Left) */}
-        <div
-          onClick={() => onWidgetClick?.("transacoes")}
-          className="rounded-[28px] liquid-glass-card p-4 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300"
-        >
-          <div className="flex items-start justify-between pb-2 border-b border-white/[0.08]">
-            {/* Category / Signal Icon */}
-            <div className="w-8 h-8 rounded-full bg-white/[0.08] border border-white/15 flex items-center justify-center text-zinc-300 group-hover:text-lime-400 group-hover:bg-lime-400/10 transition-colors shadow-inner">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <svg className="w-3.5 h-3.5 text-zinc-500 group-hover:text-white transition-colors" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-
-          <div className="flex flex-col gap-1 pt-2">
-            <span className="text-[11px] font-medium text-zinc-400">Transações</span>
-            <span className={`text-base font-bold text-white tracking-tight ${isPrivacyHidden ? "balance-blur" : ""}`}>
-              {categories.length > 0 ? `${categories.length} categorias` : "5 novas"}
-            </span>
-            <div className="flex items-center gap-1.5 pt-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="text-[10px] text-zinc-400">{topCategoryName} maior</span>
-            </div>
-          </div>
-        </div>
+        {/* Widget 1: Saldo em Contas (Top Left) */}
+        <AccountsOverviewCard
+          totalBalance={totalAccountsBalance}
+          accounts={accounts}
+          isPrivacyHidden={isPrivacyHidden}
+          onOpenDetails={onOpenAccountsDetails}
+        />
 
         {/* Widget 2: Fluxo de Caixa (Top Right) - Idêntico à referência visual com proporção e barras reais */}
         <div
@@ -632,18 +619,6 @@ export function BentoDashboardGrid({
             </div>
           );
         })()}
-      </div>
-
-      {/* Botão + Adicionar widgets exatamente como na referência */}
-      <div className="w-full flex justify-center pt-2 pb-4">
-        <button
-          type="button"
-          onClick={onAddWidgets}
-          className="flex items-center gap-2 px-6 py-3 rounded-full liquid-glass-pill liquid-glass-interactive text-xs sm:text-sm font-semibold text-white/95 hover:text-white shadow-lg cursor-pointer min-h-[44px]"
-        >
-          <span className="text-base leading-none font-light">＋</span>
-          <span>Adicionar widgets</span>
-        </button>
       </div>
     </section>
   );

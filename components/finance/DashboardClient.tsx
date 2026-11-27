@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { TopHeader, SegmentedFilterPills, SegmentType } from "@/components/finance/TopHeader";
 import { BankCardsCarousel } from "@/components/finance/BankCardsCarousel";
-import { AccountsOverviewCard } from "@/components/finance/AccountsOverviewCard";
 import { AccountsDetailsScreen } from "@/components/finance/AccountsDetailsScreen";
 import { SubscriptionsDetailsScreen } from "@/components/finance/SubscriptionsDetailsScreen";
 import { MonthlySpendingCard } from "@/components/finance/MonthlySpendingCard";
@@ -321,15 +320,7 @@ export function DashboardClient({
               onOpenInvoices={() => setSelectedSegment("cartoes")}
             />
 
-            {/* 2. Cartão de Saldo em Contas (Refletindo contas reais do Supabase) */}
-            <AccountsOverviewCard
-              totalBalance={totalAccountsBalance}
-              accounts={accountsWithPercentages}
-              isPrivacyHidden={isPrivacyHidden}
-              onOpenDetails={() => setIsAccountsDetailsOpen(true)}
-            />
-
-            {/* 3. Cartão Largura Total: Gastos do mês com curva verde neon */}
+            {/* 2. Cartão Largura Total: Gastos do mês com curva verde neon */}
             <MonthlySpendingCard
               totalSpent={initialData.monthOverview.totalSpent}
               limitPlanned={initialData.monthOverview.limitPlanned}
@@ -354,6 +345,9 @@ export function DashboardClient({
               installments={initialData.installments}
               onWidgetClick={handleWidgetClick}
               onAddWidgets={handleAddWidgets}
+              totalAccountsBalance={totalAccountsBalance}
+              accounts={accountsWithPercentages}
+              onOpenAccountsDetails={() => setIsAccountsDetailsOpen(true)}
             />
 
             {/* 5. Cartão Largura Total: 3 Últimas Transações */}

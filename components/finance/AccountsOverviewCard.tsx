@@ -173,7 +173,7 @@ export function AccountsOverviewCard({
     <button
       type="button"
       onClick={onOpenDetails}
-      className="w-full text-left rounded-[28px] liquid-glass-card p-5 border border-white/[0.12] hover:border-white/[0.2] active:scale-[0.985] transition-all duration-200 flex flex-col justify-between gap-7 shadow-2xl group cursor-pointer"
+      className="w-full text-left rounded-[28px] liquid-glass-card p-4 sm:p-5 min-h-[168px] border border-white/[0.12] hover:border-white/[0.2] active:scale-[0.98] transition-all duration-200 flex flex-col justify-between gap-4 shadow-2xl group cursor-pointer"
     >
       {/* Linha Superior: Ícones sobrepostos das contas + Seta */}
       <div className="w-full flex items-center justify-between">
@@ -205,20 +205,20 @@ export function AccountsOverviewCard({
       </div>
 
       {/* Bloco Inferior: Título, Saldo Real e Contagem */}
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium text-zinc-400">
+      <div className="flex flex-col gap-0.5 min-w-0">
+        <span className="text-[13px] sm:text-sm font-medium text-zinc-400">
           Saldo em contas
         </span>
 
         <span
-          className={`text-[30px] leading-tight font-extrabold tracking-tight text-white ${
+          className={`text-xl sm:text-2xl leading-tight font-extrabold tracking-tight text-white truncate ${
             isPrivacyHidden ? "balance-blur" : ""
           }`}
         >
           {formatAccountCurrency(totalBalance)}
         </span>
 
-        <span className="text-sm font-normal text-zinc-400 mt-0.5">
+        <span className="text-[11px] sm:text-xs font-normal text-zinc-400 mt-0.5 truncate">
           {connectedLabel}
         </span>
       </div>

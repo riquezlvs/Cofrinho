@@ -1,0 +1,27 @@
+info:
+  name: Webhook
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/open-finance/webhook"
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: x-pluggy-signature
+      value: "{{pluggyWebhookSecret}}"
+  body:
+    type: json
+    data: |-
+      {
+        "event": "item/updated",
+        "itemId": "your-pluggy-item-id"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

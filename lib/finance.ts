@@ -220,12 +220,14 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   // 6. Gastos do Mês e Categorias (Agrupamento Dinâmico)
   const plannedLimit = 4000.0;
-  // Considerar despesas operacionais do mês atual (respeitando competência e status)
+  // Considerar despesas operacionais do mês atual (respeitando competência ou data da transação e status)
   const expenseTxs = rawTransactions.filter(
     (t) =>
       t.type === "expense" &&
       t.status === "paid" &&
-      (!t.competence_date || t.competence_date.startsWith(currentCompetencePrefix))
+      (t.competence_date
+        ? t.competence_date.startsWith(currentCompetencePrefix)
+        : (t.transaction_date || "").startsWith(currentCompetencePrefix))
   );
 
   const catSums: Record<string, { name: string; color: string; amount: number }> = {};
@@ -419,17 +421,22 @@ export async function getDashboardData(): Promise<DashboardData> {
     items: subscriptionItems,
   };
 
-  // 8. Fluxo de Caixa (Cash Flow)
-  const incomeTxs = rawTransactions.filter((t) => t.type === "income");
-  const totalIncome = incomeTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
-  const totalRawExpense = rawTransactions
-    .filter((t) => t.type === "expense")
-    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  // 8. Fluxo de Caixa (Cash Flow) - Filtrado para o mês atual
+  const incomeTxs = rawTransactions.filter(
+    (t) =>
+      t.type === "income" &&
+      (t.competence_date
+        ? t.competence_date.startsWith(currentCompetencePrefix)
+        : (t.transaction_date || "").startsWith(currentCompetencePrefix))
+  );
+  const totalIncome = Number(
+    incomeTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0).toFixed(2)
+  );
 
   const cashFlow: CashFlowSummary = {
-    income: totalIncome > 0 ? totalIncome : 500.0,
-    expense: totalMonthExpenses > 0 ? totalMonthExpenses : totalRawExpense > 0 ? totalRawExpense : 65.65,
-    balance: totalIncome > 0 || totalMonthExpenses > 0 ? totalIncome - totalMonthExpenses : 434.35,
+    income: totalIncome,
+    expense: totalMonthExpenses,
+    balance: Number((totalIncome - totalMonthExpenses).toFixed(2)),
   };
 
   // 9. Parcelamentos em Andamento (Motor Bola de Neve)

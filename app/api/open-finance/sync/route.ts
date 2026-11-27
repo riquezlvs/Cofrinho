@@ -91,21 +91,41 @@ export async function POST(req: Request) {
           ? new Date(acc.creditData.balanceDueDate).getUTCDate() || 10
           : 10;
 
-        const { data: upsertedCard, error: cardError } = await supabase
+        const { data: existingCard } = await supabase
           .from("credit_cards")
-          .upsert(
-            {
+          .select("id")
+          .eq("user_id", userId)
+          .eq("name", acc.name)
+          .maybeSingle();
+
+        let upsertedCardId = existingCard?.id ?? null;
+        let cardError: { message: string } | null = null;
+
+        if (upsertedCardId) {
+          const { error } = await supabase
+            .from("credit_cards")
+            .update({
+              credit_limit: acc.creditData?.creditLimit ?? 0,
+              closing_day: closingDay,
+              due_day: dueDay,
+            })
+            .eq("id", upsertedCardId);
+          cardError = error;
+        } else {
+          const { data: insertedCard, error } = await supabase
+            .from("credit_cards")
+            .insert({
               user_id: userId,
               name: acc.name,
               credit_limit: acc.creditData?.creditLimit ?? 0,
               closing_day: closingDay,
               due_day: dueDay,
-              external_id: acc.id,
-            },
-            { onConflict: "external_id" }
-          )
-          .select("id")
-          .single();
+            })
+            .select("id")
+            .single();
+          upsertedCardId = insertedCard?.id ?? null;
+          cardError = error;
+        }
 
         if (cardError) {
           console.error(`Erro ao salvar cartão ${acc.name}:`, cardError);
@@ -115,7 +135,7 @@ export async function POST(req: Request) {
           );
         }
 
-        creditCardIdForTx = upsertedCard?.id ?? null;
+        creditCardIdForTx = upsertedCardId;
       } else {
         const { data: upsertedAccount, error: accError } = await supabase
           .from("accounts")
