@@ -1923,3 +1923,37 @@ export async function settlePersonSplits(
     return { success: false, error: message };
   }
 }
+
+export async function deleteAccount(
+  accountId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+
+    const { error: txError } = await supabase
+      .from("transactions")
+      .delete()
+      .eq("account_id", accountId);
+
+    if (txError) {
+      console.error("Erro ao remover transações da conta:", txError);
+      return { success: false, error: txError.message };
+    }
+
+    const { error } = await supabase
+      .from("accounts")
+      .delete()
+      .eq("id", accountId);
+
+    if (error) {
+      console.error("Erro ao remover conta:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido";
+    console.error("Erro interno ao remover conta:", err);
+    return { success: false, error: message };
+  }
+}

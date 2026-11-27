@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { Landmark, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 
 const PluggyConnect = dynamic(
@@ -14,6 +15,7 @@ interface ConnectBankButtonProps {
 }
 
 export function ConnectBankButton({ onConnected }: ConnectBankButtonProps) {
+  const router = useRouter();
   const [connectToken, setConnectToken] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -86,6 +88,7 @@ export function ConnectBankButton({ onConnected }: ConnectBankButtonProps) {
               if (syncRes.ok) {
                 setStatus("success");
                 setMessage("Banco conectado e sincronizado com sucesso!");
+                router.refresh();
                 onConnected?.();
               } else {
                 setStatus("error");

@@ -60,8 +60,14 @@ export interface PluggyAccount {
   id: string;
   name: string;
   type: string;
+  subtype?: string;
   balance: number;
   currencyCode: string;
+  creditData?: {
+    creditLimit?: number;
+    balanceCloseDate?: string;
+    balanceDueDate?: string;
+  };
 }
 
 export interface PluggyTransaction {
@@ -94,17 +100,30 @@ export async function fetchPluggyTransactions(
   accountId: string
 ): Promise<PluggyTransaction[]> {
   const apiKey = await getPluggyApiKey();
-  const res = await fetch(
-    `${PLUGGY_BASE_URL}/transactions?accountId=${accountId}&pageSize=100`,
-    {
-      headers: { "X-API-KEY": apiKey },
-    }
-  );
+  const allTransactions: PluggyTransaction[] = [];
+  let nextQuery: string | null = `?accountId=${encodeURIComponent(accountId)}`;
 
-  if (!res.ok) {
-    throw new Error(`Falha ao buscar transações (${res.status})`);
+  while (nextQuery) {
+    const query = nextQuery.startsWith("?") ? nextQuery : `?${nextQuery}`;
+    const res = await fetch(`${PLUGGY_BASE_URL}/v2/transactions${query}`, {
+      headers: { "X-API-KEY": apiKey },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Falha ao buscar transações (${res.status})`);
+    }
+
+    const data = (await res.json()) as {
+      results?: PluggyTransaction[];
+      next?: string | null;
+    };
+
+    if (data.results?.length) {
+      allTransactions.push(...data.results);
+    }
+
+    nextQuery = data.next ?? null;
   }
 
-  const data = (await res.json()) as { results?: PluggyTransaction[] };
-  return data.results ?? [];
+  return allTransactions;
 }

@@ -63,6 +63,7 @@ export async function POST(req: Request) {
       );
 
     if (connError) {
+      console.error("Erro ao salvar conexão:", connError);
       return NextResponse.json(
         { error: `Erro ao salvar conexão: ${connError.message}` },
         { status: 500 }
@@ -71,39 +72,92 @@ export async function POST(req: Request) {
 
     // 2. Busca contas e transações na Pluggy
     const accounts = await fetchPluggyAccounts(itemId);
+    console.log(
+      "Pluggy accounts:",
+      accounts.map((a) => ({ id: a.id, name: a.name, type: a.type, subtype: a.subtype }))
+    );
     let syncedTransactions = 0;
 
     for (const acc of accounts) {
-      const { data: upsertedAccount, error: accError } = await supabase
-        .from("accounts")
-        .upsert(
-          {
-            user_id: userId,
-            name: acc.name,
-            balance: acc.balance,
-            external_id: acc.id,
-          },
-          { onConflict: "external_id" }
-        )
-        .select("id")
-        .single();
+      const isCreditCard = acc.type === "CREDIT";
+      let accountIdForTx: string | null = null;
+      let creditCardIdForTx: string | null = null;
 
-      if (accError) {
-        return NextResponse.json(
-          { error: `Erro ao salvar conta ${acc.name}: ${accError.message}` },
-          { status: 500 }
-        );
+      if (isCreditCard) {
+        const closingDay = acc.creditData?.balanceCloseDate
+          ? new Date(acc.creditData.balanceCloseDate).getUTCDate() || 1
+          : 1;
+        const dueDay = acc.creditData?.balanceDueDate
+          ? new Date(acc.creditData.balanceDueDate).getUTCDate() || 10
+          : 10;
+
+        const { data: upsertedCard, error: cardError } = await supabase
+          .from("credit_cards")
+          .upsert(
+            {
+              user_id: userId,
+              name: acc.name,
+              credit_limit: acc.creditData?.creditLimit ?? 0,
+              closing_day: closingDay,
+              due_day: dueDay,
+              external_id: acc.id,
+            },
+            { onConflict: "external_id" }
+          )
+          .select("id")
+          .single();
+
+        if (cardError) {
+          console.error(`Erro ao salvar cartão ${acc.name}:`, cardError);
+          return NextResponse.json(
+            { error: `Erro ao salvar cartão ${acc.name}: ${cardError.message}` },
+            { status: 500 }
+          );
+        }
+
+        creditCardIdForTx = upsertedCard?.id ?? null;
+      } else {
+        const { data: upsertedAccount, error: accError } = await supabase
+          .from("accounts")
+          .upsert(
+            {
+              user_id: userId,
+              name: acc.name,
+              balance: acc.balance,
+              external_id: acc.id,
+            },
+            { onConflict: "external_id" }
+          )
+          .select("id")
+          .single();
+
+        if (accError) {
+          console.error(`Erro ao salvar conta ${acc.name}:`, accError);
+          return NextResponse.json(
+            { error: `Erro ao salvar conta ${acc.name}: ${accError.message}` },
+            { status: 500 }
+          );
+        }
+
+        accountIdForTx = upsertedAccount?.id ?? null;
       }
 
       const txs = await fetchPluggyTransactions(acc.id);
-      if (txs.length > 0 && upsertedAccount?.id) {
+      if (txs.length > 0 && (accountIdForTx || creditCardIdForTx)) {
         const rows = txs.map((tx) => ({
           user_id: userId,
-          account_id: upsertedAccount.id,
+          account_id: accountIdForTx,
+          credit_card_id: creditCardIdForTx,
           description: tx.description,
-          amount: tx.type === "DEBIT" ? -Math.abs(tx.amount) : Math.abs(tx.amount),
-          date: tx.date,
-          category: tx.category ?? "Outros",
+          amount: Math.abs(tx.amount),
+          type: tx.type === "DEBIT" ? "expense" : "income",
+          payment_method: isCreditCard
+            ? "credit"
+            : tx.description.toUpperCase().includes("PIX")
+            ? "pix"
+            : "debit",
+          transaction_date: tx.date.slice(0, 10),
+          status: "paid",
           external_id: tx.id,
         }));
 
@@ -112,6 +166,7 @@ export async function POST(req: Request) {
           .upsert(rows, { onConflict: "external_id" });
 
         if (txError) {
+          console.error("Erro ao salvar transações:", txError);
           return NextResponse.json(
             { error: `Erro ao salvar transações: ${txError.message}` },
             { status: 500 }

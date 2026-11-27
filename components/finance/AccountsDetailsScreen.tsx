@@ -6,7 +6,7 @@ import { AccountSummary, Transaction } from "@/types/finance";
 import { AccountLogo, formatAccountCurrency } from "@/components/finance/AccountsOverviewCard";
 import { TransactionIcon } from "@/components/finance/TransactionIcon";
 import { Portal } from "@/components/ui/Portal";
-import { addAccountAction } from "@/app/actions/accounts";
+import { addAccountAction, deleteAccountAction } from "@/app/actions/accounts";
 import { ConnectBankButton } from "@/components/finance/ConnectBankButton";
 
 interface AccountsDetailsScreenProps {
@@ -19,6 +19,7 @@ interface AccountsDetailsScreenProps {
   onTogglePrivacy: () => void;
   onViewAllTransactions: () => void;
   onAccountAdded?: (newAccount: AccountSummary) => void;
+  onAccountDeleted?: (accountId: string) => void;
 }
 
 const ACCOUNT_TYPES: {
@@ -42,12 +43,14 @@ export function AccountsDetailsScreen({
   onTogglePrivacy,
   onViewAllTransactions,
   onAccountAdded,
+  onAccountDeleted,
 }: AccountsDetailsScreenProps) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [name, setName] = useState("");
   const [accountType, setAccountType] = useState<AccountSummary["type"]>("checking");
   const [balanceInput, setBalanceInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -216,13 +219,41 @@ export function AccountsDetailsScreen({
                       </div>
                     </div>
 
-                    <span
-                      className={`text-[15px] font-semibold text-white shrink-0 ${
-                        isPrivacyHidden ? "balance-blur" : ""
-                      }`}
-                    >
-                      {formatAccountCurrency(acc.amount)}
-                    </span>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span
+                        className={`text-[15px] font-semibold text-white ${
+                          isPrivacyHidden ? "balance-blur" : ""
+                        }`}
+                      >
+                        {formatAccountCurrency(acc.amount)}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Remover conta ${acc.name}`}
+                        disabled={deletingAccountId === acc.id}
+                        onClick={async () => {
+                          if (!window.confirm(`Deseja remover a conta "${acc.name}"?`)) {
+                            return;
+                          }
+                          setDeletingAccountId(acc.id);
+                          try {
+                            const res = await deleteAccountAction(acc.id);
+                            if (res.success) {
+                              onAccountDeleted?.(acc.id);
+                            }
+                          } finally {
+                            setDeletingAccountId(null);
+                          }
+                        }}
+                        className="p-1.5 rounded-full text-zinc-400 hover:text-red-400 hover:bg-white/[0.08] transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        {deletingAccountId === acc.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <X className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 ))
               ) : (
