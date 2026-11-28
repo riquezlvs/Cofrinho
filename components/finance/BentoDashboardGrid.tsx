@@ -394,25 +394,33 @@ export function BentoDashboardGrid({
           );
         })()}
 
-        {/* Widget 5: Fatura Atual com Logo Oficial do Banco do Cartão (Bottom Left) */}
+        {/* Widget 5: Fatura Atual */}
         <div
           onClick={() => onWidgetClick?.("fatura")}
-          className="rounded-[28px] liquid-glass-card p-4 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300"
+          className="rounded-[28px] liquid-glass-card p-4 min-h-[164px] flex flex-col justify-between cursor-pointer group hover:border-white/30 transition-all duration-300 active:scale-[0.98] select-none"
         >
-          <div className="flex items-start justify-between pb-2 border-b border-white/[0.08]">
-            <CardWidgetIcon cardName={creditCard.cardName} />
-            <svg className="w-3.5 h-3.5 text-zinc-500 group-hover:text-white transition-colors" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <div className="flex items-start justify-between">
+            <div className="w-10 h-10 rounded-full bg-white/[0.08] border border-white/15 flex items-center justify-center text-zinc-300 group-hover:text-white transition-colors shadow-inner">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <rect x="2" y="5" width="20" height="14" rx="3" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M2 10h20" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M6 15h2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <svg className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors mt-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
 
           <div className="flex flex-col gap-0.5 pt-2">
-            <span className="text-[11px] font-medium text-zinc-400">Fatura Atual</span>
-            <span className={`text-base font-bold text-white tracking-tight ${isPrivacyHidden ? "balance-blur" : ""}`}>
+            <span className="text-xs font-medium text-zinc-400">Fatura Atual</span>
+            <span className={`text-xl sm:text-[22px] font-extrabold text-white tracking-tight leading-tight ${isPrivacyHidden ? "balance-blur" : ""}`}>
               R$ {formatCurrency(creditCard.spent)}
             </span>
-            <span className="text-[10px] text-zinc-400">
-              {creditCard.cardName} • Fecha em {creditCard.closingDays} dias
+            <span className="text-[11px] font-medium text-zinc-400 mt-0.5">
+              {creditCard.closingDays > 0
+                ? `${creditCard.cardName} • Fecha em ${creditCard.closingDays} dias`
+                : "Sem vencimento"}
             </span>
           </div>
         </div>

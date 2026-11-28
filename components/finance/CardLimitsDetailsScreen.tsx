@@ -155,8 +155,7 @@ export function CardLimitsDetailsScreen({
           now
         );
         return doesTransactionBelongToCycle(tx.dateGroup || tx.transactionDate, cycle);
-      })
-      .slice(0, 15);
+      });
   }, [allTransactions, cards, selectedCardId, selectedInvoiceOffset]);
 
   // Parcelamentos ativos agrupados
@@ -999,10 +998,19 @@ export function CardLimitsDetailsScreen({
 
                   {/* Lista de Parcelas do mês selecionado ou Estado Vazio */}
                   {(() => {
-                    const monthGroups = activeInstallmentGroups.filter(
-                      (grp) => grp.paidParcels + selectedParcelMonthIdx < grp.totalParcels
-                    );
-                    if (monthGroups.length === 0) {
+                    const selectedPrefix = selectedParcelMonth?.prefix || "";
+                    const monthTransactions = allTransactions
+                      .filter(
+                        (tx) =>
+                          tx.type === "expense" &&
+                          !tx.isHidden &&
+                          tx.installmentTotal &&
+                          tx.installmentTotal > 1 &&
+                          (tx.dateGroup || tx.transactionDate || "").startsWith(selectedPrefix)
+                      )
+                      .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+
+                    if (monthTransactions.length === 0) {
                       return (
                         <div className="w-full rounded-2xl bg-white/[0.06] border border-white/[0.08] px-4 py-3.5 flex items-center gap-3 text-sm text-zinc-400">
                           <Clock className="w-4 h-4 text-zinc-400 shrink-0" />
@@ -1015,27 +1023,29 @@ export function CardLimitsDetailsScreen({
                         <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 px-1">
                           Parcelas de {selectedParcelMonth?.label || currentMonthName}
                         </h3>
-                        {monthGroups.map((grp) => {
-                          const parcelNumInMonth = grp.paidParcels + selectedParcelMonthIdx + 1;
+                        {monthTransactions.map((tx) => {
+                          const groupKey = tx.installmentGroupId || tx.title.toLowerCase();
+                          const grp = activeInstallmentGroups.find((g) => g.key === groupKey);
+                          const remaining = grp?.remainingAmount ?? Number(tx.amount || 0);
                           return (
                             <div
-                              key={grp.key}
+                              key={tx.id}
                               className="flex items-center justify-between px-2 py-2 rounded-2xl hover:bg-white/[0.03]"
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 <TransactionIcon
-                                  title={grp.title}
-                                  categoryIcon={grp.categoryIcon}
+                                  title={tx.title}
+                                  categoryIcon={tx.categoryIcon}
                                   type="expense"
                                   size={38}
                                 />
                                 <div className="flex flex-col min-w-0">
                                   <span className="text-sm font-medium text-white truncate">
-                                    {grp.title}
+                                    {tx.title}
                                   </span>
                                   <span className="text-xs text-zinc-400 truncate">
-                                    Parcela {parcelNumInMonth}/{grp.totalParcels} • Restam{" "}
-                                    {formatCurrency(grp.remainingAmount)}
+                                    Parcela {tx.installmentNumber || 1}/{tx.installmentTotal} • Restam{" "}
+                                    {formatCurrency(remaining)}
                                   </span>
                                 </div>
                               </div>
@@ -1045,7 +1055,7 @@ export function CardLimitsDetailsScreen({
                                   isPrivacyHidden ? "balance-blur" : ""
                                 }`}
                               >
-                                R$ {formatCurrency(grp.amountPerParcel)}
+                                R$ {formatCurrency(Number(tx.amount || 0))}
                               </span>
                             </div>
                           );
